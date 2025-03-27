@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="purchase_order_form_inherit_scm" model="ir.ui.view">
+        <field name="name">purchase.order.form.inherit.scm</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="consolidation_id" readonly="1" 
+                       invisible="not is_from_consolidation"/>
+                <field name="is_from_consolidation" invisible="1"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

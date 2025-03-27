@@ -1,0 +1,47 @@
+# Odoo 17 Supply Chain Management Module Structure
+
+scm_procurement/
+│
+├── __init__.py                  # Module initialization
+├── __manifest__.py              # Module manifest
+│
+├── models/                      # Data models
+│   ├── __init__.py
+│   ├── scm_consolidation.py     # PR Consolidation Session model
+│   ├── scm_consolidated_line.py # Consolidated PR Line model
+│   ├── scm_purchase_suggestion.py  # Purchase Suggestion models (Phase 3)
+│   ├── scm_fulfillment_plan.py  # PR Fulfillment Plan model (Phase 4)
+│   ├── scm_change_log.py        # Change Log model (Phase 5)
+│   ├── purchase_request.py      # Extensions to Purchase Request
+│   ├── purchase_order.py        # Extensions to Purchase Order (Phase 3)
+│   └── stock_picking.py         # Extensions to Stock Picking (Phase 4)
+│
+├── wizards/                     # Wizards for workflows
+│   ├── __init__.py
+│   ├── create_consolidation_wizard.py  # Wizard for creating consolidation
+│   ├── validate_inventory_wizard.py    # Wizard for inventory validation (Phase 2)
+│   └── create_po_wizard.py             # Wizard for creating POs (Phase 3)
+│
+├── views/                       # UI Views
+│   ├── scm_consolidation_views.xml      # Views for consolidation session
+│   ├── scm_consolidated_line_views.xml  # Views for consolidated lines
+│   ├── scm_purchase_suggestion_views.xml  # Views for purchase suggestions (Phase 3)
+│   ├── scm_fulfillment_plan_views.xml   # Views for fulfillment plans (Phase 4)
+│   ├── scm_change_log_views.xml         # Views for change logs (Phase 5)
+│   ├── purchase_request_views.xml       # Extended views for purchase requests
+│   ├── purchase_order_views.xml         # Extended views for purchase orders (Phase 3)
+│   ├── stock_picking_views.xml          # Extended views for stock pickings (Phase 4)
+│   └── menu_views.xml                   # Module menus
+│
+├── security/                    # Security configuration
+│   ├── ir.model.access.csv      # Access rights
+│   └── scm_security.xml         # Security rules
+│
+├── data/                        # Data files
+│   ├── scm_sequence.xml         # Sequences for models
+│   └── scm_cron.xml             # Scheduled actions (Phase 5)
+│
+└── report/                      # Reports
+    ├── scm_consolidation_report.xml          # Consolidation report template
+    ├── scm_purchase_suggestion_report.xml    # Purchase suggestion report (Phase 3)
+    └── scm_fulfillment_report.xml            # Fulfillment report (Phase 4)

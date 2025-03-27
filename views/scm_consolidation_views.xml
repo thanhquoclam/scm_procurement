@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_scm_consolidation_tree" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.tree</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <tree string="Consolidation Sessions" decoration-info="state == 'draft'" decoration-muted="state == 'cancelled'" decoration-success="state == 'done'" decoration-warning="state == 'in_progress'">
+                <field name="name"/>
+                <field name="date_from"/>
+                <field name="date_to"/>
+                <field name="user_id"/>
+                <field name="state"/>
+                <field name="total_amount" sum="Total"/>
+                <field name="currency_id" invisible="1"/>
+                <field name="pr_count"/>
+                <field name="po_count"/>
+                <field name="creation_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_scm_consolidation_form" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.form</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_start_consolidation" 
+                            string="Start Consolidation" 
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state not in ['draft']"/>
+                    
+                    <button name="action_validate_consolidation"
+                            string="Validate Consolidation"
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state not in ['in_progress']"/>
+                    
+                    <button name="button_validate_inventory"
+                            string="Validate Inventory"
+                            type="object"
+                            invisible="state not in ['validated']"/>
+                    
+                    <button name="button_inventory_approved"
+                            string="Approve Inventory"
+                            type="object"
+                            invisible="state not in ['inventory_validation']"/>
+                    
+                    <button name="action_create_purchase_orders"
+                            string="Create POs"
+                            type="object"
+                            invisible="state not in ['approved']"/>
+                    
+                    <button name="action_mark_done"
+                            string="Mark as Done"
+                            type="object"
+                            invisible="state not in ['po_created']"/>
+                    
+                    <button name="action_cancel"
+                            string="Cancel"
+                            type="object"
+                            invisible="state in ['cancelled', 'done']"/>
+                    
+                    <button name="action_reset_to_draft"
+                            string="Reset to Draft"
+                            type="object"
+                            invisible="state not in ['cancelled']"/>
+                    
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,in_progress,validated,inventory_validation,approved,po_created,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_purchase_requests" type="object" class="oe_stat_button" icon="fa-list">
+                            <field name="pr_count" widget="statinfo" string="Purchase Requests"/>
+                        </button>
+                        <button name="action_view_purchase_orders" type="object" class="oe_stat_button" icon="fa-shopping-cart" invisible="not po_count">
+                            <field name="po_count" widget="statinfo" string="Purchase Orders"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="date_from" invisible="state not in ['draft']"/>
+                            <field name="date_to" invisible="state not in ['draft']"/>
+                            <field name="user_id"/>
+                            <field name="creation_date" readonly="1"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="warehouse_id"/>
+                        </group>
+                        <group>
+                            <field name="total_amount" widget="monetary"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="validation_date" readonly="1" invisible="not validation_date"/>
+                            <field name="po_creation_date" readonly="1" invisible="not po_creation_date"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Consolidated Lines" name="consolidated_lines">
+                            <field name="consolidated_line_ids" readonly="state in ['done', 'cancelled']">
+                                <tree editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="product_uom_id"/>
+                                    <field name="total_quantity"/>
+                                    <field name="available_quantity"/>
+                                    <field name="quantity_to_purchase"/>
+                                    <field name="inventory_status"/>
+                                    <field name="earliest_date_required"/>
+                                    <field name="priority"/>
+                                    <field name="suggested_vendor_id"/>
+                                    <field name="purchase_price" widget="monetary"/>
+                                    <field name="subtotal" widget="monetary" sum="Total"/>
+                                    <field name="currency_id" invisible="1"/>
+                                    <field name="state"/>
+                                    <button name="action_validate" 
+                                            string="Validate" 
+                                            type="object" 
+                                            icon="fa-check" 
+                                            invisible="state not in ['draft']"/>
+                                    <button name="action_suggest_vendors" 
+                                            string="Suggest Vendor" 
+                                            type="object" 
+                                            icon="fa-user" 
+                                            invisible="suggested_vendor_id"/>
+                                    <button name="refresh_inventory_data" 
+                                            string="Refresh Stock" 
+                                            type="object" 
+                                            icon="fa-refresh"/>
+                                    <button name="action_view_stock" 
+                                            string="View Stock" 
+                                            type="object" 
+                                            icon="fa-cubes"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_scm_consolidation_search" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.search</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <search string="Search Consolidation Sessions">
+                <field name="name"/>
+                <field name="user_id"/>
+                <filter string="Draft" name="draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="In Progress" name="in_progress" domain="[('state', '=', 'in_progress')]"/>
+                <filter string="Validated" name="validated" domain="[('state', '=', 'validated')]"/>
+                <filter string="POs Created" name="po_created" domain="[('state', '=', 'po_created')]"/>
+                <filter string="Done" name="done" domain="[('state', '=', 'done')]"/>
+                <filter string="Cancelled" name="cancelled" domain="[('state', '=', 'cancelled')]"/>
+                <separator/>
+                <filter string="My Consolidations" name="my_consolidations" domain="[('user_id', '=', uid)]"/>
+                <filter string="This Month" name="this_month" domain="[('creation_date', '&gt;=', (context_today() + relativedelta(day=1)).strftime('%Y-%m-%d')), ('creation_date', '&lt;=', (context_today() + relativedelta(months=1, day=1, days=-1)).strftime('%Y-%m-%d'))]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="groupby_state" context="{'group_by': 'state'}"/>
+                    <filter string="Responsible" name="groupby_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Creation Date" name="groupby_date" context="{'group_by': 'creation_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Kanban View -->
+    <record id="view_scm_consolidation_kanban" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.kanban</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" sample="1">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="user_id"/>
+                <field name="date_from"/>
+                <field name="date_to"/>
+                <field name="total_amount"/>
+                <field name="currency_id"/>
+                <field name="pr_count"/>
+                <field name="po_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click">
+                            <div class="row">
+                                <div class="col-8">
+                                    <strong><field name="name"/></strong>
+                                </div>
+                                <div class="col-4">
+                                    <span class="float-right text-right">
+                                        <field name="state" widget="label_selection" options="{'classes': {'draft': 'info', 'in_progress': 'warning', 'validated': 'success', 'po_created': 'primary', 'done': 'success', 'cancelled': 'danger'}}"/>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <span><field name="date_from"/></span> - <span><field name="date_to"/></span>
+                                </div>
+                                <div class="col-6 text-right">
+                                    <field name="total_amount" widget="monetary"/><field name="currency_id" invisible="1"/>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <span><field name="user_id"/></span>
+                                </div>
+                                <div class="col-6 text-right">
+                                    <span class="badge badge-pill badge-info"><i class="fa fa-list"/> <field name="pr_count"/></span>
+                                    <span class="badge badge-pill badge-primary"><i class="fa fa-shopping-cart"/> <field name="po_count"/></span>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Dashboard View -->
+    <record id="view_scm_consolidation_dashboard" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.dashboard</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <graph string="Consolidation Analysis" sample="1">
+                <field name="creation_date" interval="month"/>
+                <field name="total_amount" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Pivot View -->
+    <record id="view_scm_consolidation_pivot" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.pivot</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <pivot string="Consolidation Analysis" sample="1">
+                <field name="user_id" type="row"/>
+                <field name="state" type="col"/>
+                <field name="total_amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Calendar View -->
+    <record id="view_scm_consolidation_calendar" model="ir.ui.view">
+        <field name="name">scm.pr.consolidation.session.calendar</field>
+        <field name="model">scm.pr.consolidation.session</field>
+        <field name="arch" type="xml">
+            <calendar string="Consolidation Calendar" date_start="date_from" date_stop="date_to" color="user_id" mode="month">
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="state"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- Action Window -->
+    <record id="action_scm_consolidation" model="ir.actions.act_window">
+        <field name="name">Consolidation Sessions</field>
+        <field name="res_model">scm.pr.consolidation.session</field>
+        <field name="view_mode">kanban,tree,form,calendar,pivot,graph</field>
+        <field name="search_view_id" ref="view_scm_consolidation_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new consolidation session
+            </p>
+            <p>
+                Consolidation sessions help you aggregate Purchase Requests and prepare Purchase Orders.
+            </p>
+        </field>
+    </record>
+
+    <!-- Action to open wizard -->
+    <record id="action_open_create_consolidation_wizard" model="ir.actions.act_window">
+        <field name="name">Create Consolidation Session</field>
+        <field name="res_model">scm.create.consolidation.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

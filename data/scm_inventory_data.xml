@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default Inventory Rules -->
+        <record id="finished_products_inventory_rule" model="scm.inventory.rule">
+            <field name="name">Finished Products Default Rule</field>
+            <field name="product_category_id" ref="product.product_category_1"/>
+            <field name="safety_stock_qty">5.0</field>
+            <field name="min_stock_qty">10.0</field>
+            <field name="reorder_point">20.0</field>
+            <field name="max_stock_qty">50.0</field>
+            <field name="lead_time">3</field>
+            <field name="priority">2</field>
+            <field name="active" eval="True"/>
+            <field name="warehouse_id" ref="stock.warehouse0"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+    </data>
+</odoo>

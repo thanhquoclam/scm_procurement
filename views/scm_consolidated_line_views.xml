@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_consolidated_pr_line_form" model="ir.ui.view">
+        <field name="name">scm.consolidated.pr.line.form</field>
+        <field name="model">scm.consolidated.pr.line</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_validate" 
+                            string="Validate" 
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state not in ['draft']"/>
+                    
+                    <button name="action_suggest_vendors" 
+                            string="Suggest Vendors" 
+                            type="object"
+                            invisible="suggested_vendor_id"/>
+                    
+                    <button name="refresh_inventory_data" 
+                            string="Refresh Stock" 
+                            type="object"/>
+                    
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,validated,po_suggested,po_created,fulfilled"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="consolidation_id"/>
+                            <field name="product_id"/>
+                            <field name="product_uom_id"/>
+                            <field name="warehouse_id"/>
+                            <field name="suggested_vendor_id"/>
+                            <field name="priority"/>
+                        </group>
+                        <group>
+                            <field name="total_quantity"/>
+                            <field name="available_quantity"/>
+                            <field name="quantity_to_purchase"/>
+                            <field name="purchase_price" widget="monetary"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="subtotal" widget="monetary"/>
+                            <field name="earliest_date_required"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Purchase Request Lines" name="pr_lines">
+                            <field name="purchase_request_line_ids" readonly="1">
+                                <tree>
+                                    <field name="request_id"/>
+                                    <field name="product_id"/>
+                                    <field name="product_qty"/>
+                                    <field name="product_uom_id"/>
+                                    <field name="date_required"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Inventory Information" name="inventory">
+                            <group>
+                                <group>
+                                    <field name="current_stock"/>
+                                    <field name="forecasted_stock"/>
+                                    <field name="safety_stock_level"/>
+                                    <field name="reorder_point"/>
+                                </group>
+                                <group>
+                                    <field name="inventory_status"/>
+                                    <field name="days_of_stock"/>
+                                    <field name="lead_time"/>
+                                    <field name="expected_receipt_date"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Procurement History" name="procurement_history">
+                            <group>
+                                <group>
+                                    <field name="last_purchase_date"/>
+                                    <field name="last_purchase_price" widget="monetary"/>
+                                </group>
+                                <group>
+                                    <field name="avg_monthly_usage"/>
+                                    <field name="turnover_rate" widget="percentage"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+    <!-- Actions -->
+    <record id="action_scm_consolidated_line" model="ir.actions.act_window">
+        <field name="name">Consolidated Lines</field>
+        <field name="res_model">scm.consolidated.pr.line</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No consolidated lines found
+            </p>
+            <p>
+                Consolidated lines will appear here when purchase requests are consolidated.
+            </p>
+        </field>
+    </record>
+</odoo>

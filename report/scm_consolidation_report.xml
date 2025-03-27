@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Report action -->
+        <record id="action_report_scm_consolidation" model="ir.actions.report">
+            <field name="name">Consolidation Report</field>
+            <field name="model">scm.pr.consolidation.session</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">scm_procurement.report_consolidation</field>
+            <field name="report_file">scm_procurement.report_consolidation</field>
+            <field name="binding_model_id" ref="model_scm_pr_consolidation_session"/>
+            <field name="binding_type">report</field>
+        </record>
+
+        <!-- Report template -->
+        <template id="report_consolidation">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="doc">
+                    <t t-call="web.external_layout">
+                        <div class="page">
+                            <h2>PR Consolidation Report</h2>
+                            
+                            <div class="row mt16 mb16">
+                                <div class="col-6">
+                                    <strong>Reference:</strong> <span t-field="doc.name"/>
+                                    <br/>
+                                    <strong>Period:</strong> <span t-field="doc.date_from"/> to <span t-field="doc.date_to"/>
+                                    <br/>
+                                    <strong>Status:</strong> <span t-field="doc.state"/>
+                                    <br/>
+                                    <strong>Created by:</strong> <span t-field="doc.user_id"/>
+                                </div>
+                                <div class="col-6">
+                                    <strong>Created on:</strong> <span t-field="doc.creation_date"/>
+                                    <br/>
+                                    <strong>Validated on:</strong> <span t-field="doc.validation_date"/>
+                                    <br/>
+                                    <strong>PO Created on:</strong> <span t-field="doc.po_creation_date"/>
+                                    <br/>
+                                    <strong>Total Amount:</strong> <span t-field="doc.total_amount" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                </div>
+                            </div>
+                            
+                            <table class="table table-sm o_main_table">
+                                <thead>
+                                    <tr>
+                                        <th name="th_product">Product</th>
+                                        <th name="th_total_quantity" class="text-right">Total Requested</th>
+                                        <th name="th_available_quantity" class="text-right">Available</th>
+                                        <th name="th_purchase_quantity" class="text-right">To Purchase</th>
+                                        <th name="th_vendor">Suggested Vendor</th>
+                                        <th name="th_price" class="text-right">Unit Price</th>
+                                        <th name="th_subtotal" class="text-right">Subtotal</th>
+                                        <th name="th_status">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="doc.consolidated_line_ids" t-as="line">
+                                        <td><span t-field="line.product_id"/></td>
+                                        <td class="text-right">
+                                            <span t-field="line.total_quantity"/> 
+                                            <span t-field="line.product_uom_id" groups="uom.group_uom"/>
+                                        </td>
+                                        <td class="text-right">
+                                            <span t-field="line.available_quantity"/> 
+                                            <span t-field="line.product_uom_id" groups="uom.group_uom"/>
+                                        </td>
+                                        <td class="text-right">
+                                            <span t-field="line.quantity_to_purchase"/> 
+                                            <span t-field="line.product_uom_id" groups="uom.group_uom"/>
+                                        </td>
+                                        <td><span t-field="line.suggested_vendor_id"/></td>
+                                        <td class="text-right"><span t-field="line.purchase_price" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/></td>
+                                        <td class="text-right"><span t-field="line.subtotal" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/></td>
+                                        <td><span t-field="line.state"/></td>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="6" class="text-right"><strong>Total</strong></td>
+                                        <td class="text-right">
+                                            <strong><span t-esc="sum(doc.consolidated_line_ids.mapped('subtotal'))" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/></strong>
+                                        </td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            
+                            <div class="row mt32 mb32" t-if="doc.notes">
+                                <div class="col-12">
+                                    <strong>Notes:</strong>
+                                    <p t-field="doc.notes"/>
+                                </div>
+                            </div>
+                            
+                            <div class="oe_structure"/>
+                        </div>
+                    </t>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Sequence for PR Consolidation Sessions -->
+        <record id="seq_scm_pr_consolidation" model="ir.sequence">
+            <field name="name">PR Consolidation</field>
+            <field name="code">scm.pr.consolidation</field>
+            <field name="prefix">CONS/%(year)s/</field>
+            <field name="padding">5</field>
+            <field name="company_id" eval="False"/>
+        </record>
+    </data>
+</odoo>

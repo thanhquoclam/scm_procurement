@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Form View for Wizard -->
+    <record id="view_create_consolidation_wizard_form" model="ir.ui.view">
+        <field name="name">scm.create.consolidation.wizard.form</field>
+        <field name="model">scm.create.consolidation.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Create Consolidation Session">
+                <sheet>
+                    <div class="alert alert-info" role="alert">
+                        <field name="pr_count"/> eligible Purchase Request(s) found.
+                        <button name="action_preview_prs" 
+                                string="Preview" 
+                                type="object" 
+                                class="btn-link" 
+                                invisible="pr_count == 0"/>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="user_id"/>
+                        </group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="auto_start"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Filters">
+                            <group>
+                                <field name="department_ids" widget="many2many_tags"/>
+                                <field name="category_ids" widget="many2many_tags"/>
+                            </group>
+                        </page>
+                        <page string="Notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button name="action_create_consolidation" 
+                            string="Create" 
+                            type="object" 
+                            class="btn-primary" 
+                            invisible="pr_count == 0"/>
+                    <button string="Cancel" 
+                            class="btn-secondary" 
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+    <!-- Phase 2-->
+    <!-- Extend Consolidation Form View -->
+    
+</odoo>

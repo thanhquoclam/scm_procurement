@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inventory Validation Report -->
+    <record id="report_scm_inventory_validation" model="ir.actions.report">
+        <field name="name">Inventory Validation Report</field>
+        <field name="model">scm.consolidation</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">scm_procurement.report_inventory_validation</field>
+        <field name="report_file">scm_procurement.report_inventory_validation</field>
+        <field name="print_report_name">'Inventory Validation - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="model_scm_consolidation"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Base Template -->
+    <template id="report_inventory_validation_document">
+        <t t-call="web.external_layout">
+            <div class="page">
+                <h2>Inventory Validation Report</h2>
+                <div class="row mt32 mb32">
+                    <div class="col-3">
+                        <strong>Reference:</strong>
+                        <p t-field="o.name"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Validation Date:</strong>
+                        <p t-field="o.inventory_validation_date"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Validated By:</strong>
+                        <p t-field="o.inventory_validated_by"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Status:</strong>
+                        <p t-field="o.state"/>
+                    </div>
+                </div>
+
+                <h4>Inventory Status Summary</h4>
+                <div class="row mt16 mb16">
+                    <div class="col-4">
+                        <div t-if="o.total_stockout_items" class="alert alert-danger">
+                            <strong>Stockout Items: </strong>
+                            <span t-field="o.total_stockout_items"/>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div t-if="o.total_below_safety" class="alert alert-warning">
+                            <strong>Below Safety Stock: </strong>
+                            <span t-field="o.total_below_safety"/>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div t-if="o.total_below_reorder" class="alert alert-info">
+                            <strong>Below Reorder Point: </strong>
+                            <span t-field="o.total_below_reorder"/>
+                        </div>
+                    </div>
+                </div>
+
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th class="text-right">Current Stock</th>
+                            <th class="text-right">Safety Stock</th>
+                            <th class="text-right">Reorder Point</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="o.consolidated_line_ids" t-as="line">
+                            <td><span t-field="line.product_id"/></td>
+                            <td class="text-right"><span t-field="line.current_stock"/></td>
+                            <td class="text-right"><span t-field="line.safety_stock_level"/></td>
+                            <td class="text-right"><span t-field="line.reorder_point"/></td>
+                            <td><span t-field="line.inventory_status"/></td>
+                            <td><span t-field="line.notes"/></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div t-if="o.inventory_validation_notes" class="mt32">
+                    <strong>Validation Notes:</strong>
+                    <p t-field="o.inventory_validation_notes"/>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Main Report Template -->
+    <template id="report_inventory_validation">
+        <t t-call="scm_procurement.scm_report_layout">
+            <div class="page">
+                <h2>Inventory Validation Report</h2>
+                <div class="row mt32 mb32">
+                    <div class="col-3">
+                        <strong>Reference:</strong>
+                        <p t-field="o.name"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Validation Date:</strong>
+                        <p t-field="o.inventory_validation_date"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Validated By:</strong>
+                        <p t-field="o.inventory_validated_by"/>
+                    </div>
+                    <div class="col-3">
+                        <strong>Status:</strong>
+                        <p t-field="o.state"/>
+                    </div>
+                </div>
+                <!-- ...rest of your template... -->
+            </div>
+        </t>
+    </template>
+
+    <!-- Report Action -->
+    <record id="action_report_inventory_validation" model="ir.actions.report">
+        <field name="name">Inventory Validation Report</field>
+        <field name="model">scm.consolidation</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">scm_procurement.report_inventory_validation</field>
+        <field name="report_file">scm_procurement.report_inventory_validation</field>
+        <field name="print_report_name">'Inventory Validation - %s' % (object.name)</field>
+        <field name="binding_model_id" eval="ref('model_scm_consolidation')"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Add to the consolidation report -->
+    <template id="report_scm_consolidation_document_inherit" inherit_id="scm_procurement.report_scm_consolidation_document">
+        <xpath expr="//div[hasclass('page')]" position="inside">
+            <!-- Add inventory section if validation has been done -->
+            <t t-if="o.inventory_validated">
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h4>Inventory Validation</h4>
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Status</th>
+                                <td><span t-field="o.inventory_status"/></td>
+                                <th>Validated By</th>
+                                <td><span t-field="o.inventory_validated_by.name"/></td>
+                            </tr>
+                            <tr>
+                                <th>Validation Date</th>
+                                <td><span t-field="o.inventory_validation_date"/></td>
+                                <th>Issues</th>
+                                <td>
+                                    <t t-if="o.has_critical_shortages">
+                                        <span class="text-danger">Critical Shortages</span>
+                                    </t>
+                                    <t t-elif="o.has_inventory_issues">
+                                        <span class="text-warning">Reorder Issues</span>
+                                    </t>
+                                    <t t-else="">
+                                        <span class="text-success">No Issues</span>
+                                    </t>
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <t t-if="o.inventory_validation_notes">
+                            <strong>Validation Notes:</strong>
+                            <p t-field="o.inventory_validation_notes"/>
+                        </t>
+                    </div>
+                </div>
+            </t>
+        </xpath>
+    </template>
+</odoo>

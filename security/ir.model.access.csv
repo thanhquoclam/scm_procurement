@@ -1,0 +1,16 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_scm_pr_consolidation_session_user,scm.pr.consolidation.session.user,scm_procurement.model_scm_pr_consolidation_session,stock.group_stock_user,1,1,1,0
+access_scm_pr_consolidation_session_manager,scm.pr.consolidation.session.manager,scm_procurement.model_scm_pr_consolidation_session,stock.group_stock_manager,1,1,1,1
+access_scm_consolidated_pr_line_user,scm.consolidated.pr.line.user,scm_procurement.model_scm_consolidated_pr_line,stock.group_stock_user,1,1,1,0
+access_scm_consolidated_pr_line_manager,scm.consolidated.pr.line.manager,scm_procurement.model_scm_consolidated_pr_line,stock.group_stock_manager,1,1,1,1
+access_scm_inventory_rule_user,scm.inventory.rule.user,scm_procurement.model_scm_inventory_rule,stock.group_stock_user,1,1,1,0
+access_scm_inventory_rule_manager,scm.inventory.rule.manager,scm_procurement.model_scm_inventory_rule,stock.group_stock_manager,1,1,1,1
+access_scm_forecast_user,scm.forecast.user,scm_procurement.model_scm_forecast,stock.group_stock_user,1,1,1,0
+access_scm_forecast_manager,scm.forecast.manager,scm_procurement.model_scm_forecast,stock.group_stock_manager,1,1,1,1
+access_scm_forecast_line_user,scm.forecast.line.user,scm_procurement.model_scm_forecast_line,stock.group_stock_user,1,1,1,0
+access_scm_forecast_line_manager,scm.forecast.line.manager,scm_procurement.model_scm_forecast_line,stock.group_stock_manager,1,1,1,1
+access_validate_inventory_wizard,validate.inventory.wizard,scm_procurement.model_validate_inventory_wizard,stock.group_stock_user,1,1,1,1
+access_validate_inventory_wizard_line,validate.inventory.wizard.line,scm_procurement.model_validate_inventory_wizard_line,stock.group_stock_user,1,1,1,1
+access_reject_inventory_wizard,reject.inventory.wizard,scm_procurement.model_reject_inventory_wizard,stock.group_stock_manager,1,1,1,1
+access_forecast_wizard,forecast.wizard,scm_procurement.model_forecast_wizard,stock.group_stock_user,1,1,1,1
+access_forecast_wizard_line,forecast.wizard.line,scm_procurement.model_forecast_wizard_line,stock.group_stock_user,1,1,1,1
