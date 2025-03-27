@@ -157,6 +157,9 @@ class PRConsolidationSession(models.Model):
     def action_start_consolidation(self):
         """Start the consolidation process."""
         self.ensure_one()
+    
+        self._collect_purchase_requests()
+    
         return self.write({
             'state': 'in_progress'
         })

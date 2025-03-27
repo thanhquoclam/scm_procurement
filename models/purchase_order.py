@@ -4,7 +4,7 @@ class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
 
     consolidation_id = fields.Many2one(
-        'scm.consolidation',
+        'scm.pr.consolidation.session',  # Updated model reference
         string='Consolidation Session',
         readonly=True,
         copy=False,
