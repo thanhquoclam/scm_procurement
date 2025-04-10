@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_blanket_order_tree" model="ir.ui.view">
+        <field name="name">scm.blanket.order.tree</field>
+        <field name="model">scm.blanket.order</field>
+        <field name="arch" type="xml">
+            <tree string="Blanket Orders" decoration-info="state=='draft'" decoration-success="state=='active'" decoration-muted="state=='expired'" decoration-danger="state=='cancelled'">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="state"/>
+                <field name="total_amount" sum="Total"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_blanket_order_form" model="ir.ui.view">
+        <field name="name">scm.blanket.order.form</field>
+        <field name="model">scm.blanket.order</field>
+        <field name="arch" type="xml">
+            <form string="Blanket Order">
+                <header>
+                    <button name="action_activate" string="Activate" type="object" class="oe_highlight" states="draft"/>
+                    <button name="action_cancel" string="Cancel" type="object" states="draft,active"/>
+                    <button name="action_expire" string="Expire" type="object" states="active"/>
+                    <button name="action_reset_to_draft" string="Reset to Draft" type="object" states="cancelled"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,active,expired,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                            <field name="total_amount"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Order Lines">
+                            <field name="line_ids">
+                                <tree editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="product_uom_id"/>
+                                    <field name="price_unit"/>
+                                    <field name="min_qty"/>
+                                    <field name="max_qty"/>
+                                    <field name="price_subtotal"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_blanket_order_search" model="ir.ui.view">
+        <field name="name">scm.blanket.order.search</field>
+        <field name="model">scm.blanket.order</field>
+        <field name="arch" type="xml">
+            <search string="Blanket Orders">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
+                <filter string="Active" name="active" domain="[('state','=','active')]"/>
+                <filter string="Expired" name="expired" domain="[('state','=','expired')]"/>
+                <filter string="Cancelled" name="cancelled" domain="[('state','=','cancelled')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Vendor" name="partner" context="{'group_by':'partner_id'}"/>
+                    <filter string="Status" name="status" context="{'group_by':'state'}"/>
+                    <filter string="Start Date" name="start_date" context="{'group_by':'date_start'}"/>
+                    <filter string="End Date" name="end_date" context="{'group_by':'date_end'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_blanket_order" model="ir.actions.act_window">
+        <field name="name">Blanket Orders</field>
+        <field name="res_model">scm.blanket.order</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_blanket_order_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new blanket order
+            </p>
+            <p>
+                Blanket orders allow you to define long-term agreements with vendors,
+                specifying products, quantities, and prices for a specific period.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_blanket_order"
+              name="Blanket Orders"
+              parent="scm_procurement.menu_scm_procurement"
+              action="action_blanket_order"
+              sequence="30"/>
+</odoo> 

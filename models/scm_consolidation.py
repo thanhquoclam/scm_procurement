@@ -458,7 +458,7 @@ class PRConsolidationSession(models.Model):
         return {
             'name': _('Create Purchase Orders'),
             'type': 'ir.actions.act_window',
-            'res_model': 'create.po.wizard',
+            'res_model': 'scm.create.po.wizard',
             'view_mode': 'form',
             'target': 'new',
             'context': {

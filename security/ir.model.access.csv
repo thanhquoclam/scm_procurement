@@ -15,8 +15,12 @@ access_reject_inventory_wizard,reject.inventory.wizard,scm_procurement.model_rej
 access_forecast_wizard_user,forecast.wizard.user,model_forecast_wizard,stock.group_stock_user,1,1,1,1
 access_forecast_wizard_line_user,forecast.wizard.line.user,model_forecast_wizard_line,stock.group_stock_user,1,1,1,1
 access_select_pr_lines_wizard_user,select.pr.lines.wizard.user,model_select_pr_lines_wizard,stock.group_stock_user,1,1,1,1
-access_create_po_wizard_user,create.po.wizard.user,model_create_po_wizard,stock.group_stock_user,1,1,1,1
+access_create_po_wizard_user,create.po.wizard.user,model_scm_create_po_wizard,stock.group_stock_user,1,1,1,1
 access_create_po_wizard_line_user,create.po.wizard.line.user,model_create_po_wizard_line,stock.group_stock_user,1,1,1,1
-access_create_po_wizard,access.create.po.wizard,model_create_po_wizard,base.group_user,1,1,1,1
+access_create_po_wizard,access.create.po.wizard,model_scm_create_po_wizard,base.group_user,1,1,1,1
 access_create_po_wizard_line,access.create.po.wizard.line,model_create_po_wizard_line,base.group_user,1,1,1,1
 access_no_po_needed_wizard_user,no.po.needed.wizard.user,model_no_po_needed_wizard,stock.group_stock_user,1,1,1,1
+access_scm_blanket_order_user,scm.blanket.order.user,model_scm_blanket_order,stock.group_stock_user,1,1,1,1
+access_scm_blanket_order_manager,scm.blanket.order.manager,model_scm_blanket_order,stock.group_stock_manager,1,1,1,1
+access_scm_blanket_order_line_user,scm.blanket.order.line.user,model_scm_blanket_order_line,stock.group_stock_user,1,1,1,1
+access_scm_blanket_order_line_manager,scm.blanket.order.line.manager,model_scm_blanket_order_line,stock.group_stock_manager,1,1,1,1

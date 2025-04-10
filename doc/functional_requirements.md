@@ -1,11 +1,11 @@
-# Functional Requirements Document: SCM Procurement Module (Phase 1 & 2)
+# Functional Requirements Document: SCM Procurement Module (Phase 1, 2 & 3)
 
-**Version:** 1.0
-**Date:** 2025-04-01
+**Version:** 1.1
+**Date:** 2025-04-10
 
 **1. Introduction**
 
-*   **1.1 Purpose:** This document defines the functional requirements for Phase 1 (Purchase Request Consolidation) and Phase 2 (Inventory Validation) of the SCM Procurement Odoo Module. It details the expected behavior, user interactions, data handling, and business logic necessary to achieve the module's objectives for these phases.
+*   **1.1 Purpose:** This document defines the functional requirements for Phase 1 (Purchase Request Consolidation), Phase 2 (Inventory Validation), and Phase 3 (Purchase Order Creation) of the SCM Procurement Odoo Module. It details the expected behavior, user interactions, data handling, and business logic necessary to achieve the module's objectives for these phases.
 *   **1.2 Scope:**
     *   **In Scope:**
         *   Creation and management of PR Consolidation Sessions.
@@ -15,8 +15,11 @@
         *   Identification and categorization of inventory statuses (sufficient, shortages, etc.).
         *   Workflow for reviewing and handling inventory exceptions.
         *   Final approval of the inventory validation stage.
+        *   Creation of purchase orders from validated consolidation lines.
+        *   Vendor assignment and grouping for purchase orders.
+        *   Application of pricing rules and vendor pricelists.
+        *   Tracking of PO creation status and history.
     *   **Out of Scope:**
-        *   Phase 3: Purchase Order Generation (including vendor suggestion, PO creation, PO approval workflows).
         *   Detailed reporting and analytics capabilities (beyond basic computed fields/counts).
         *   Module configuration settings (e.g., setting up approval rules, defining inventory rule parameters - although the *use* of these rules is in scope).
         *   Administration and user role management.
@@ -89,7 +92,7 @@
 
 *   **FR-INV-008:** The system can update safety stock levels based on validation, but the calculation logic is still being refined.
 
-**3.3. PO Creation (Phase 3 - Future)**
+**3.3. Purchase Order Creation (Phase 3)**
 
 *   **FR-PO-001: Create Purchase Orders from Validated Lines**
 
@@ -97,85 +100,350 @@
     *   **Priority:** High
     *   **Description:** The system shall allow users to create purchase orders from validated and approved consolidation lines, grouping products by vendor and applying appropriate pricing.
     *   **User Interface (UI) Description:**
-        *   A button (e.g., "Create Purchase Orders") shall be visible and enabled on the `scm_pr_consolidation_session` form view when the record `state` is 'Approved'.
-        *   Clicking the button opens a wizard (`create.po.wizard`) that allows:
+        *   A button "Create Purchase Orders" shall be visible on the consolidation session form when state is 'po_creation'
+        *   Clicking the button opens the `create.po.wizard` that allows:
             *   Selection of vendor for the PO
             *   Setting the order date
             *   Adding optional notes
+            *   Selecting blanket orders (if available)
             *   Reviewing and adjusting line quantities
-        *   The wizard displays a list of products with their quantities to purchase, prices, and other relevant information.
+        *   The wizard displays a list of products with their quantities to purchase, prices, and other relevant information
     *   **Business Rules/Logic:**
-        *   Only lines with `quantity_to_purchase > 0` are included in the PO.
-        *   Products are grouped by vendor if multiple vendors are involved.
-        *   Standard prices from the product or vendor pricelist are used.
-        *   The PO is linked to the consolidation session via `consolidation_id`.
+        *   Only lines with `quantity_to_purchase > 0` are included in the PO
+        *   Products are grouped by vendor if multiple vendors are involved
+        *   Standard prices from the product or vendor pricelist are used
+        *   The PO is linked to the consolidation session via `consolidation_id`
+        *   If a blanket order is selected:
+            *   Use blanket order pricing
+            *   Validate quantities against blanket order limits
+            *   Link the PO to the blanket order
     *   **Data Handling:**
-        *   Input: Selected vendor, order date, notes, and line quantities from the wizard.
-        *   Processing: Create PO and PO lines with the specified data.
-        *   Output: New `purchase.order` record with corresponding `purchase.order.line` records.
+        *   Input: Selected vendor, order date, notes, blanket order (optional), and line quantities
+        *   Processing: 
+            *   Create PO with vendor and date information
+            *   Create PO lines with quantities and prices
+            *   Apply blanket order pricing if selected
+            *   Link PO to consolidation session
+        *   Output: New `purchase.order` record with corresponding `purchase.order.line` records
     *   **Preconditions:**
-        *   The `scm_pr_consolidation_session` record exists and its `state` is 'Approved'.
-        *   At least one line has a positive `quantity_to_purchase`.
-        *   User has permission to create purchase orders.
+        *   The consolidation session exists and its state is 'po_creation'
+        *   At least one line has a positive `quantity_to_purchase`
+        *   User has permission to create purchase orders
     *   **Postconditions:**
-        *   A new purchase order is created with the specified vendor and lines.
-        *   The PO is linked to the consolidation session.
-        *   The session's `state` is updated to 'PO Created'.
+        *   A new purchase order is created with the specified vendor and lines
+        *   The PO is linked to the consolidation session
+        *   The session's state is updated to 'po_created'
+        *   PO creation date and creator are recorded
     *   **Error Handling/Alternative Flows:**
-        *   If no lines have positive quantities to purchase, display a warning message.
-        *   Handle cases where vendor information is missing or invalid.
+        *   Handle cases where no validated lines exist for the selected vendor
+        *   Validate blanket order quantities and dates
+        *   Provide option to mark lines as "No PO Needed" if required
 
-    **Implementation Status (April 2023):**
-    *   **FR-PO-001:** Fully implemented with the following features:
-        *   "Create Purchase Orders" button in the consolidation session form view
-        *   `create.po.wizard` for vendor selection and PO creation
-        *   Automatic filtering of lines with positive quantities to purchase
-        *   PO linking to consolidation session
-        *   State management for PO creation process
-
-   **FR-PO-002: Group Products by Vendor**
+*   **FR-PO-002: Group Products by Vendor**
 
     *   **Source:** High-Level Req. Phase 3.2
     *   **Priority:** High
-    *   **Description:** The system shall automatically group products by vendor when creating purchase orders, ensuring efficient procurement processes.
-    *   **Implementation Status (April 2023):**
-    *   **FR-PO-002:** Partially implemented:
-        *   Basic vendor grouping in the PO creation wizard
-        *   Manual vendor selection per PO
-        *   TODO: Automatic vendor assignment based on product-vendor relationships
+    *   **Description:** The system shall group products by vendor when creating purchase orders from consolidation lines.
+    *   **User Interface (UI) Description:**
+        *   The PO creation wizard shall:
+            *   Show products grouped by vendor
+            *   Allow selecting a specific vendor
+            *   Display vendor-specific information
+        *   The consolidation session form shall show:
+            *   Number of POs created per vendor
+            *   Total amount per vendor
+    *   **Business Rules/Logic:**
+        *   Products must be assigned to vendors before PO creation
+        *   Create separate POs for each vendor
+        *   Maintain proper links between POs and consolidation
+        *   Handle vendor-specific requirements and pricing
+    *   **Data Handling:**
+        *   Input: Product-vendor assignments from consolidation lines
+        *   Processing: Group products by vendor and create POs
+        *   Output: Set of linked POs, one per vendor
+    *   **Preconditions:**
+        *   Products are assigned to vendors
+        *   User has permission to create multiple POs
+    *   **Postconditions:**
+        *   Multiple POs are created as needed
+        *   All POs are properly linked to the consolidation
+        *   Vendor-specific information is maintained
 
-   **FR-PO-003: Apply Pricing Rules**
+*   **FR-PO-003: Apply Pricing Rules**
 
     *   **Source:** High-Level Req. Phase 3.3
     *   **Priority:** High
-    *   **Description:** The system shall apply appropriate pricing rules when creating purchase order lines, considering vendor pricelists and product-specific pricing.
-    *   **Implementation Status (April 2023):**
-    *   **FR-PO-003:** Fully implemented:
-        *   Integration with Odoo's standard pricelist system
-        *   Automatic price calculation based on vendor pricelists
-        *   Support for product-specific pricing rules
+    *   **Description:** The system shall apply appropriate pricing rules when creating purchase orders.
+    *   **User Interface (UI) Description:**
+        *   The PO creation wizard shall show:
+            *   Standard product prices
+            *   Vendor-specific prices
+            *   Blanket order prices (if available)
+        *   Allow manual price adjustments if needed
+    *   **Business Rules/Logic:**
+        *   First check for blanket order prices
+        *   If no blanket order, use vendor-specific prices
+        *   Fall back to product standard price
+        *   Allow manual price adjustments with proper authorization
+    *   **Data Handling:**
+        *   Input: Product and vendor information
+        *   Processing: Apply pricing rules in order of priority
+        *   Output: Final prices for PO lines
+    *   **Preconditions:**
+        *   Product and vendor information is available
+        *   Pricing rules are properly configured
+    *   **Postconditions:**
+        *   Correct prices are applied to PO lines
+        *   Price history is maintained
 
-   **FR-PO-004: Track PO Creation Status**
+*   **FR-PO-004: Track PO Creation Status**
 
     *   **Source:** High-Level Req. Phase 3.4
     *   **Priority:** Medium
-    *   **Description:** The system shall maintain the status of purchase order creation within the consolidation session, including tracking which lines have been converted to POs.
-    *   **Implementation Status (April 2023):**
-    *   **FR-PO-004:** Fully implemented:
-        *   PO creation status tracking in consolidation session
-        *   State management ('po_created', 'done')
-        *   PO count and linking in the session form view
+    *   **Description:** The system shall maintain the status of purchase order creation within the consolidation session.
+    *   **User Interface (UI) Description:**
+        *   The consolidation session form view shall show:
+            *   Number of POs created
+            *   Status of each PO
+            *   Links to created POs
+            *   PO creation date and creator
+        *   A dedicated tab for PO tracking
+    *   **Business Rules/Logic:**
+        *   Track PO creation status per line
+        *   Maintain links between POs and consolidation lines
+        *   Update session state based on PO status
+        *   Record PO creation history
+    *   **Data Handling:**
+        *   Input: PO creation events
+        *   Processing: Update tracking information
+        *   Output: Updated status and links
+    *   **Preconditions:**
+        *   POs are being created
+        *   Tracking fields are properly configured
+    *   **Postconditions:**
+        *   PO status is accurately tracked
+        *   Links between POs and consolidation are maintained
+        *   Creation history is recorded
 
-   **FR-PO-005: Handle Multiple Vendors**
+*   **FR-PO-005: Handle Multiple Vendors**
 
     *   **Source:** High-Level Req. Phase 3.5
     *   **Priority:** Medium
-    *   **Description:** The system shall support creating multiple purchase orders for different vendors when products in a consolidation session are sourced from various suppliers.
-    *   **Implementation Status (April 2023):**
-    *   **FR-PO-005:** Partially implemented:
-        *   Basic support for creating POs with different vendors
-        *   Manual vendor selection in the wizard
-        *   TODO: Automatic vendor assignment and grouping
+    *   **Description:** The system shall support creating multiple purchase orders for different vendors.
+    *   **User Interface (UI) Description:**
+        *   The PO creation wizard shall:
+            *   Show products grouped by vendor
+            *   Allow creating multiple POs in one action
+            *   Provide a summary of POs to be created
+        *   Users can review and modify vendor assignments
+    *   **Business Rules/Logic:**
+        *   Create separate POs for each vendor
+        *   Maintain proper links between POs and consolidation
+        *   Handle vendor-specific requirements
+        *   Support different pricing rules per vendor
+    *   **Data Handling:**
+        *   Input: Product-vendor assignments
+        *   Processing: Create multiple POs as needed
+        *   Output: Set of linked POs
+    *   **Preconditions:**
+        *   Products are assigned to vendors
+        *   User has permission to create multiple POs
+    *   **Postconditions:**
+        *   Multiple POs are created as needed
+        *   All POs are properly linked to the consolidation
+        *   Vendor-specific information is maintained
+
+*   **FR-PO-006: Handle Blanket Orders**
+
+    *   **Source:** Business Requirements Document
+    *   **Priority:** High
+    *   **Description:** The system must check for blanket orders when creating purchase orders from validated consolidation lines.
+    *   **User Interface:**
+        *   The PO creation wizard must display:
+            *   Available blanket orders for the vendor (if any)
+            *   Standard PO creation options (if no blanket orders)
+        *   For blanket orders, show:
+            *   Reference number
+            *   Validity period
+            *   Product-specific pricing
+            *   Minimum and maximum quantities
+    *   **Business Rules:**
+        1. Blanket Order Check:
+            *   System first checks for active blanket orders for the vendor
+            *   Only considers orders within their validity period
+            *   If no valid blanket orders exist, proceed with standard PO creation
+
+        2. When Blanket Orders Exist:
+            *   Use blanket order pricing and terms
+            *   Validate quantities against blanket order limits
+            *   Create PO with reference to blanket order
+            *   Track blanket order usage
+
+        3. When No Blanket Orders:
+            *   Proceed with standard PO creation process
+            *   Use vendor's standard pricing
+            *   Create single PO for all products
+    *   **Data Handling:**
+        1. Input:
+            *   Consolidation line data
+            *   Vendor information
+            *   Required quantities
+            *   Blanket order selection (if available)
+
+        2. Processing:
+            *   Check for active blanket orders
+            *   If found: Apply blanket order rules
+            *   If not found: Use standard PO creation
+            *   Update blanket order usage
+
+        3. Output:
+            *   Created purchase order(s)
+            *   Updated consolidation session status
+            *   Updated blanket order usage
+            *   Activity logs for tracking
+    *   **Preconditions:**
+        *   Valid consolidation session with approved lines
+        *   Vendor information is available
+        *   Blanket orders are properly configured (if used)
+    *   **Postconditions:**
+        *   PO is created with correct pricing
+        *   Blanket order usage is updated
+        *   All references are properly maintained
+
+*   **FR-PO-007: Blanket Order Management**
+
+    *   **Source:** Business Requirements Document
+    *   **Priority:** High
+    *   **Description:** The system must provide functionality to manage blanket orders for vendors.
+
+    *   **User Interface:**
+        *   Blanket order form view with:
+            *   Basic information (reference, vendor, dates)
+            *   Line items with products and pricing
+            *   Status tracking
+            *   History and notes
+
+    *   **Business Rules:**
+        1. Blanket Order Creation:
+            *   Must specify vendor and validity period
+            *   Must include at least one product line
+            *   Must define minimum and maximum quantities
+            *   Must specify unit prices
+
+        2. Status Management:
+            *   Draft: Initial state for new blanket orders
+            *   Active: Available for PO creation
+            *   Expired: Past end date
+            *   Cancelled: Manually cancelled
+
+        3. Quantity Management:
+            *   Track remaining quantities against maximum
+            *   Prevent exceeding maximum quantities
+            *   Allow partial usage across multiple POs
+
+        4. Pricing Rules:
+            *   Fixed prices for specified products
+            *   Price validity tied to blanket order period
+            *   Support for different UoM conversions
+
+    *   **Data Handling:**
+        1. Input:
+            *   Vendor information
+            *   Product details
+            *   Pricing information
+            *   Quantity constraints
+            *   Validity period
+
+        2. Processing:
+            *   Validate all required fields
+            *   Check for overlapping periods
+            *   Verify vendor status
+            *   Calculate total values
+
+        3. Output:
+            *   Created blanket order record
+            *   Generated reference number
+            *   Status updates
+            *   Activity logs
+
+    *   **Preconditions:**
+        *   Valid vendor with supplier status
+        *   Products must exist in system
+        *   No overlapping blanket orders for same products
+
+    *   **Postconditions:**
+        *   Blanket order created in system
+        *   Available for PO creation
+        *   Properly tracked in vendor history
+
+    *   **Error Handling:**
+        1. Validation Errors:
+            *   Missing required fields
+            *   Invalid dates
+            *   Invalid quantities
+            *   Invalid prices
+
+        2. Business Rule Violations:
+            *   Overlapping periods
+            *   Duplicate products
+            *   Invalid vendor status
+
+        3. System Errors:
+            *   Database constraints
+            *   Reference generation failures
+            *   Status transition errors
+
+*   **Implementation Status (April 2025):**
+
+    *   **FR-PO-006: Handle Blanket Orders**
+        *   **Current Status:** Not Implemented
+        *   **Gaps:**
+            1. Blanket Order Integration:
+                *   No model for blanket orders exists
+                *   No logic to check for blanket orders during PO creation
+                *   Missing UI elements in PO creation wizard
+
+            2. PO Creation Logic:
+                *   Current implementation creates POs without checking blanket orders
+                *   No handling of blanket order pricing
+                *   No validation against blanket order quantities
+
+            3. Data Model:
+                *   Missing fields to link POs to blanket orders
+                *   No tracking of blanket order usage
+                *   No history of blanket order references
+
+        *   **Next Steps:**
+            1. Create blanket order models (FR-PO-007)
+            2. Update PO creation wizard to check for blanket orders
+            3. Implement blanket order pricing logic
+            4. Add UI elements for blanket order selection
+            5. Update PO model to reference blanket orders
+
+    *   **FR-PO-007: Blanket Order Management**
+        *   **Current Status:** Not Implemented
+        *   **Gaps:**
+            1. Data Model:
+                *   No blanket order model exists
+                *   Missing fields for tracking validity and quantities
+                *   No relationship to vendors and products
+
+            2. Business Logic:
+                *   No status management
+                *   No quantity tracking
+                *   No pricing rules implementation
+
+            3. User Interface:
+                *   No forms or views for blanket orders
+                *   Missing workflow buttons
+                *   No reporting or tracking features
+
+        *   **Next Steps:**
+            1. Create blanket order models and fields
+            2. Implement status management
+            3. Add quantity tracking logic
+            4. Create user interface elements
+            5. Implement validation rules
 
 ---
 

@@ -5,114 +5,178 @@ from odoo.exceptions import UserError
 
 
 class CreatePOWizard(models.TransientModel):
-    _name = 'create.po.wizard'
-    _description = 'Create Purchase Orders Wizard'
+    _name = 'scm.create.po.wizard'
+    _description = 'Create Purchase Orders from Validated Lines'
 
-    consolidation_id = fields.Many2one('scm.pr.consolidation.session', string='Consolidation', required=True)
-    warehouse_id = fields.Many2one('stock.warehouse', string='Warehouse', required=True)
-    line_ids = fields.One2many('create.po.wizard.line', 'wizard_id', string='Lines to Create PO')
-    vendor_id = fields.Many2one('res.partner', string='Vendor', required=True)
-    date_order = fields.Date(string='Order Date', required=True, default=fields.Date.context_today)
+    consolidation_id = fields.Many2one(
+        'scm.pr.consolidation.session',
+        string='Consolidation Session',
+        required=True
+    )
+    vendor_id = fields.Many2one(
+        'res.partner',
+        string='Vendor',
+        required=True,
+        domain=[('supplier_rank', '>', 0)]
+    )
+    date_order = fields.Date(
+        string='Order Date',
+        default=fields.Date.context_today,
+        required=True
+    )
     notes = fields.Text(string='Notes')
-
-    @api.model
-    def default_get(self, fields_list):
-        res = super(CreatePOWizard, self).default_get(fields_list)
-        if self.env.context.get('active_id'):
-            consolidation = self.env['scm.pr.consolidation.session'].browse(self.env.context.get('active_id'))
-            if consolidation:
-                # Create wizard line values only for lines with positive quantity to purchase
-                wizard_line_vals = []
-                for line in consolidation.consolidated_line_ids:
-                    if line.quantity_to_purchase > 0:  # Only include lines that need to be purchased
-                        wizard_line_vals.append({
-                            'product_id': line.product_id.id,
-                            'product_uom_id': line.product_uom_id.id,
-                            'product_qty': line.quantity_to_purchase,
-                            'price_unit': line.purchase_price,
-                            'price_subtotal': line.subtotal,
-                        })
-                
-                # Always set the basic fields regardless of whether there are lines or not
-                res.update({
-                    'consolidation_id': consolidation.id,
-                    'warehouse_id': consolidation.warehouse_id.id,
-                    'date_order': fields.Date.context_today(self),
-                    'line_ids': [(0, 0, vals) for vals in wizard_line_vals] if wizard_line_vals else []
-                })
-                
-        return res
-
-    @api.model
-    def create(self, vals):
-        # Check if we need to show the "No Purchase Needed" wizard
-        if vals.get('no_lines_to_purchase'):
-            # Remove the flag from vals
-            vals.pop('no_lines_to_purchase')
-            # Create the wizard record
-            wizard = super(CreatePOWizard, self).create(vals)
-            # Return action to open the "No Purchase Needed" wizard
-            return {
-                'type': 'ir.actions.act_window',
-                'name': _('No Purchase Needed'),
-                'res_model': 'no.po.needed.wizard',
-                'view_mode': 'form',
-                'target': 'new',
-                'context': {
-                    'default_consolidation_id': wizard.consolidation_id.id,
-                    'default_message': _("No lines need to be purchased. All products have sufficient inventory available. Do you want to proceed without creating a purchase order?")
+    
+    # Add field for blanket order selection
+    blanket_order_id = fields.Many2one(
+        'scm.blanket.order',
+        string='Blanket Order',
+        domain="[('partner_id', '=', vendor_id), ('state', '=', 'active')]",
+        help="Select a blanket order to use its pricing and terms"
+    )
+    
+    # Add field to show available blanket orders
+    available_blanket_orders = fields.Many2many(
+        'scm.blanket.order',
+        string='Available Blanket Orders',
+        compute='_compute_available_blanket_orders'
+    )
+    
+    expected_receipts = fields.Integer('Items with Expected Receipts', compute='_compute_expected_receipts')
+    
+    @api.depends('vendor_id')
+    def _compute_available_blanket_orders(self):
+        for wizard in self:
+            if wizard.vendor_id:
+                wizard.available_blanket_orders = self.env['scm.blanket.order'].search([
+                    ('partner_id', '=', wizard.vendor_id.id),
+                    ('state', '=', 'active'),
+                    ('date_start', '<=', fields.Date.today()),
+                    ('date_end', '>=', fields.Date.today())
+                ])
+            else:
+                wizard.available_blanket_orders = False
+    
+    @api.onchange('vendor_id')
+    def _onchange_vendor_id(self):
+        if self.vendor_id:
+            # Reset blanket order when vendor changes
+            self.blanket_order_id = False
+            
+            # Check if there are active blanket orders for this vendor
+            blanket_orders = self.env['scm.blanket.order'].search([
+                ('partner_id', '=', self.vendor_id.id),
+                ('state', '=', 'active'),
+                ('date_start', '<=', fields.Date.today()),
+                ('date_end', '>=', fields.Date.today())
+            ])
+            
+            if blanket_orders:
+                # If there's only one, select it automatically
+                if len(blanket_orders) == 1:
+                    self.blanket_order_id = blanket_orders[0].id
+                return {
+                    'warning': {
+                        'title': _('Blanket Orders Available'),
+                        'message': _('There are %d active blanket orders available for this vendor.') % len(blanket_orders)
+                    }
                 }
-            }
-        return super(CreatePOWizard, self).create(vals)
-
+    
     def action_create_po(self):
         self.ensure_one()
         
-        # Check if there are no lines to purchase
-        if not self.line_ids:
-            # Open the "No Purchase Needed" wizard
+        # Get validated lines for the selected vendor
+        validated_lines = self.env['scm.consolidated.pr.line'].search([
+            ('consolidation_id', '=', self.consolidation_id.id),
+            ('state', '=', 'validated'),
+            ('quantity_to_purchase', '>', 0),
+            ('product_id.seller_ids.partner_id', '=', self.vendor_id.id)
+        ])
+        
+        if not validated_lines:
+            # Open NoPONeededWizard instead of raising an error
             return {
                 'type': 'ir.actions.act_window',
-                'name': _('No Purchase Needed'),
                 'res_model': 'no.po.needed.wizard',
                 'view_mode': 'form',
                 'target': 'new',
                 'context': {
                     'default_consolidation_id': self.consolidation_id.id,
-                    'default_message': _("No lines need to be purchased. All products have sufficient inventory available. Do you want to proceed without creating a purchase order?")
+                    'default_message': _("No validated lines found for the selected vendor %s. No purchase order will be created.") % self.vendor_id.name
                 }
             }
-
+        
         # Create purchase order
         po_vals = {
             'partner_id': self.vendor_id.id,
             'date_order': self.date_order,
-            'consolidation_id': self.consolidation_id.id,
             'notes': self.notes,
-            'order_line': [(0, 0, {
-                'product_id': line.product_id.id,
-                'product_uom': line.product_uom_id.id,
-                'product_qty': line.product_qty,
-                'price_unit': line.price_unit,
-            }) for line in self.line_ids]
+            'consolidation_id': self.consolidation_id.id,
+            'is_from_consolidation': True,
         }
         
-        po = self.env['purchase.order'].create(po_vals)
+        # Add blanket order reference if selected
+        if self.blanket_order_id:
+            po_vals['blanket_order_id'] = self.blanket_order_id.id
         
-        # Update consolidation state
+        purchase_order = self.env['purchase.order'].create(po_vals)
+        
+        # Create purchase order lines
+        for line in validated_lines:
+            # Check if product is in blanket order
+            blanket_line = False
+            if self.blanket_order_id:
+                blanket_line = self.env['scm.blanket.order.line'].search([
+                    ('blanket_order_id', '=', self.blanket_order_id.id),
+                    ('product_id', '=', line.product_id.id)
+                ], limit=1)
+            
+            # Prepare line values
+            line_vals = {
+                'order_id': purchase_order.id,
+                'product_id': line.product_id.id,
+                'name': line.product_id.name,
+                'product_qty': line.quantity_to_purchase,
+                'product_uom': line.product_id.uom_po_id.id,
+                'price_unit': line.product_id.standard_price,
+                'date_planned': fields.Datetime.now(),
+            }
+            
+            # If blanket order line exists, use its price and reference
+            if blanket_line:
+                line_vals.update({
+                    'price_unit': blanket_line.price_unit,
+                    'blanket_order_line_id': blanket_line.id,
+                })
+                
+                # Check quantity constraints
+                if line.quantity_to_purchase < blanket_line.min_qty:
+                    raise UserError(_(
+                        "Product %s: Quantity %s is below the minimum quantity %s specified in the blanket order."
+                    ) % (line.product_id.name, line.quantity_to_purchase, blanket_line.min_qty))
+                
+                if line.quantity_to_purchase > blanket_line.max_qty:
+                    raise UserError(_(
+                        "Product %s: Quantity %s is above the maximum quantity %s specified in the blanket order."
+                    ) % (line.product_id.name, line.quantity_to_purchase, blanket_line.max_qty))
+            
+            # Create the line
+            self.env['purchase.order.line'].create(line_vals)
+        
+        # Update consolidation session state
         self.consolidation_id.write({
             'state': 'po_created',
-            'po_creation_date': fields.Datetime.now()
+            'po_creation_date': fields.Date.today(),
+            'po_created_by': self.env.user.id
         })
         
-        # Return action to view the created PO
+        # Return action to open the created PO
         return {
-            'name': _('Purchase Order'),
             'type': 'ir.actions.act_window',
             'res_model': 'purchase.order',
-            'res_id': po.id,
+            'res_id': purchase_order.id,
             'view_mode': 'form',
             'target': 'current',
+            'name': _('Purchase Order')
         }
 
 
@@ -145,6 +209,7 @@ class NoPONeededWizard(models.TransientModel):
         # Update consolidation state to po_created without creating a PO
         self.consolidation_id.write({
             'state': 'po_created',
-            'po_creation_date': fields.Datetime.now()
+            'po_creation_date': fields.Datetime.now(),
+            'notes': self.message
         })
         return {'type': 'ir.actions.act_window_close'} 
