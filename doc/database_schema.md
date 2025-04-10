@@ -42,6 +42,7 @@ This document describes the database table structure for the `scm_procurement` O
 | `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
 | `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
 | `total_amount`            | double precision            |                                               | Computed: Total Value        |
+| `purchase_order_ids`      | One2many                    | Inverse: consolidation_id on purchase.order   | Related Purchase Orders      |
 
 **Relationships**:
 *   Many-to-One with `res_users` (responsible, creator, updater, validator).
@@ -50,6 +51,20 @@ This document describes the database table structure for the `scm_procurement` O
 *   One-to-Many with `scm_consolidated_pr_line`.
 *   Many-to-Many with `purchase_request` via `scm_pr_consolidation_request_rel`.
 *   *Note: Assumed Many-to-Many relationships with `hr_department` and `product_category` exist based on Odoo model structure, but corresponding relation tables (`scm_consolidation_department_rel`, `scm_consolidation_category_rel`) are missing from the provided script.*
+
+**State Field Values**:
+
+| Value                     | Description                                                |
+|---------------------------|------------------------------------------------------------|
+| `draft`                   | Initial state, session is being created                    |
+| `selecting_lines`         | User is selecting PR lines to consolidate                  |
+| `in_progress`             | Lines have been selected, consolidation in progress        |
+| `validated`               | Consolidation has been validated                          |
+| `inventory_validation`    | Inventory validation is in progress                       |
+| `po_creation`             | Ready for PO creation                                      |
+| `po_created`              | POs have been created                                      |
+| `done`                    | Process is complete                                        |
+| `cancelled`               | Process has been cancelled                                 |
 
 ### 2.2. `scm_consolidated_pr_line`
 
@@ -224,26 +239,115 @@ This document describes the database table structure for the `scm_procurement` O
 
 ## 4. Wizard Tables
 
-### 4.1. `scm_create_consolidation_wizard`
+### 4.1. `validate_inventory_wizard`
 
-**Purpose**: Supports a transient model (wizard) used for creating new `scm_pr_consolidation_session` records through a user interface form.
+**Purpose**: Temporary table for the inventory validation wizard, allowing users to review and validate inventory levels for consolidated lines.
 
 **Columns**:
 
-| Column Name  | Data Type         | Constraints                                 | Description            |
-|--------------|-------------------|---------------------------------------------|------------------------|
-| `id`         | integer           | PRIMARY KEY, DEFAULT nextval(...)           | Unique identifier      |
-| `user_id`    | integer           | FOREIGN KEY (res_users) ON DELETE SET NULL  | Responsible User       |
-| `company_id` | integer           | FOREIGN KEY (res_company) ON DELETE SET NULL  | Company                |
-| `create_uid` | integer           | FOREIGN KEY (res_users) ON DELETE SET NULL  | Created by User        |
-| `write_uid`  | integer           | FOREIGN KEY (res_users) ON DELETE SET NULL  | Last Updated by User   |
-| `name`       | character varying | NOT NULL                                    | Session Name           |
-| `date_from`  | date              | NOT NULL                                    | Start Date             |
-| `date_to`    | date              | NOT NULL                                    | End Date               |
-| `notes`      | text              |                                             | Notes                  |
-| `auto_start` | boolean           |                                             | Auto Start Option?     |
-| `create_date`| timestamp         |                                             | Odoo: Record Creation  |
-| `write_date` | timestamp         |                                             | Odoo: Record Update    |
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `consolidation_id`        | integer                     | FOREIGN KEY (scm_pr_consolidation_session)    | Related Consolidation Session|
+| `warehouse_id`            | integer                     | FOREIGN KEY (stock_warehouse)                 | Warehouse for inventory      |
+| `validation_notes`        | text                        |                                               | Notes from validation        |
+| `include_critical_only`   | boolean                     | DEFAULT true                                  | Filter for critical items    |
+| `auto_approve_non_critical`| boolean                    | DEFAULT true                                  | Auto-approve non-critical    |
+| `request_manager_approval`| boolean                     | DEFAULT true                                  | Request manager approval     |
+| `update_safety_stock`     | boolean                     | DEFAULT false                                 | Update safety stock          |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+**Implementation Status (April 2023):**
+- The `validate_inventory_wizard` table has been implemented and is fully functional.
+- The wizard displays all consolidated lines with their current stock, required quantity, and available quantity.
+- Users can filter to view only critical items, and the system calculates the quantity to purchase.
+- After validation, users can proceed to PO creation.
+
+### 4.2. `validate_inventory_wizard_line`
+
+**Purpose**: Temporary table for lines in the inventory validation wizard, representing individual products to be validated.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `wizard_id`               | integer                     | FOREIGN KEY (validate_inventory_wizard)       | Related Wizard               |
+| `product_id`              | integer                     | FOREIGN KEY (product_product)                 | Product                      |
+| `uom_id`                  | integer                     | FOREIGN KEY (uom_uom)                         | Unit of Measure              |
+| `current_stock`           | numeric                     |                                               | Current stock level          |
+| `required_qty`            | numeric                     |                                               | Required quantity            |
+| `available_qty`           | numeric                     |                                               | Available quantity           |
+| `quantity_to_purchase`    | numeric                     |                                               | Quantity to purchase         |
+| `inventory_status`        | character varying           |                                               | Inventory status             |
+| `notes`                   | text                        |                                               | Notes                        |
+| `inventory_exception`     | boolean                     |                                               | Has inventory exception      |
+| `exception_approved_by`   | integer                     | FOREIGN KEY (res_users)                       | Exception approved by        |
+| `exception_approval_date` | timestamp without time zone |                                               | Exception approval date      |
+| `inventory_notes`         | text                        |                                               | Inventory notes              |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+**Implementation Status (April 2023):**
+- The `validate_inventory_wizard_line` table has been implemented and is fully functional.
+- The wizard lines display current stock, required quantity, available quantity, and quantity to purchase.
+- The inventory status is calculated based on current stock and required quantity.
+- Users can add notes and mark exceptions for approval.
+
+### 4.3. `create_po_wizard`
+
+**Purpose**: Temporary table for the purchase order creation wizard, allowing users to create purchase orders from validated consolidated lines.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `consolidation_id`        | integer                     | FOREIGN KEY (scm_pr_consolidation_session)    | Related Consolidation Session|
+| `warehouse_id`            | integer                     | FOREIGN KEY (stock_warehouse)                 | Warehouse for inventory      |
+| `vendor_id`               | integer                     | FOREIGN KEY (res_partner)                     | Vendor for PO                |
+| `date_order`              | date                        |                                               | Order date                   |
+| `notes`                   | text                        |                                               | Notes                        |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+**Implementation Status (April 2023):**
+- The `create_po_wizard` table has been implemented and is partially functional.
+- The wizard allows users to select a vendor and create a PO with the validated quantities.
+- The created PO is linked to the consolidation session and visible in a dedicated tab.
+- Vendor suggestion and grouping by vendor are planned for future implementation.
+
+### 4.4. `create_po_wizard_line`
+
+**Purpose**: Temporary table for lines in the purchase order creation wizard, representing individual products to be purchased.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `wizard_id`               | integer                     | FOREIGN KEY (create_po_wizard)                | Related Wizard               |
+| `product_id`              | integer                     | FOREIGN KEY (product_product)                 | Product                      |
+| `product_uom_id`          | integer                     | FOREIGN KEY (uom_uom)                         | Unit of Measure              |
+| `product_qty`             | numeric                     |                                               | Quantity to purchase         |
+| `price_unit`              | numeric                     |                                               | Price per unit               |
+| `price_subtotal`          | numeric                     |                                               | Price subtotal               |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+**Implementation Status (April 2023):**
+- The `create_po_wizard_line` table has been implemented and is partially functional.
+- The wizard lines display product, quantity, and price information.
+- The lines are created from validated consolidated lines with positive quantity to purchase.
 
 ## 5. Problematic / Unknown Tables
 
@@ -261,5 +365,145 @@ The following tables were found in the script but seem incorrect or are likely a
 **Note**: These tables indicate a schema inconsistency or error. They should likely be dropped or corrected to reference valid tables/models if a relationship was intended. Their presence might be related to the Odoo ORM errors previously encountered.
 
 ## 6. Summary
+
+The schema supports PR consolidation (`scm_pr_consolidation_session`, `scm_consolidated_pr_line`) linked to purchase requests (`purchase_request`). It includes functionality for inventory rules (`scm_inventory_rule`) and forecasting (`scm_forecast`, `scm_forecast_line`). Wizard tables aid in UI processes. Key relationships are established via foreign keys and dedicated relation tables. However, some expected relation tables seem missing, and the `_unknown_*` tables suggest schema errors that need addressing.
+
+## 6. Phase 2 Implementation Updates (April 2023)
+
+### 6.1. New Wizard Tables
+
+#### 6.1.1. `validate_inventory_wizard`
+
+**Purpose**: Temporary table for the inventory validation wizard, allowing users to review and validate inventory levels for consolidated lines.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `consolidation_id`        | integer                     | FOREIGN KEY (scm_pr_consolidation_session)    | Related Consolidation Session|
+| `warehouse_id`            | integer                     | FOREIGN KEY (stock_warehouse)                 | Warehouse for inventory      |
+| `validation_notes`        | text                        |                                               | Notes from validation        |
+| `include_critical_only`   | boolean                     | DEFAULT true                                  | Filter for critical items    |
+| `auto_approve_non_critical`| boolean                    | DEFAULT true                                  | Auto-approve non-critical    |
+| `request_manager_approval`| boolean                     | DEFAULT true                                  | Request manager approval     |
+| `update_safety_stock`     | boolean                     | DEFAULT false                                 | Update safety stock          |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+#### 6.1.2. `validate_inventory_wizard_line`
+
+**Purpose**: Temporary table for lines in the inventory validation wizard, representing individual products to be validated.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `wizard_id`               | integer                     | FOREIGN KEY (validate_inventory_wizard)       | Related Wizard               |
+| `product_id`              | integer                     | FOREIGN KEY (product_product)                 | Product                      |
+| `uom_id`                  | integer                     | FOREIGN KEY (uom_uom)                         | Unit of Measure              |
+| `current_stock`           | numeric                     |                                               | Current stock level          |
+| `required_qty`            | numeric                     |                                               | Required quantity            |
+| `available_qty`           | numeric                     |                                               | Available quantity           |
+| `quantity_to_purchase`    | numeric                     |                                               | Quantity to purchase         |
+| `inventory_status`        | character varying           |                                               | Inventory status             |
+| `notes`                   | text                        |                                               | Notes                        |
+| `inventory_exception`     | boolean                     |                                               | Has inventory exception      |
+| `exception_approved_by`   | integer                     | FOREIGN KEY (res_users)                       | Exception approved by        |
+| `exception_approval_date` | timestamp without time zone |                                               | Exception approval date      |
+| `inventory_notes`         | text                        |                                               | Inventory notes              |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+#### 6.1.3. `create_po_wizard`
+
+**Purpose**: Temporary table for the purchase order creation wizard, allowing users to create purchase orders from validated consolidated lines.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `consolidation_id`        | integer                     | FOREIGN KEY (scm_pr_consolidation_session)    | Related Consolidation Session|
+| `warehouse_id`            | integer                     | FOREIGN KEY (stock_warehouse)                 | Warehouse for inventory      |
+| `vendor_id`               | integer                     | FOREIGN KEY (res_partner)                     | Vendor for PO                |
+| `date_order`              | date                        |                                               | Order date                   |
+| `notes`                   | text                        |                                               | Notes                        |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+#### 6.1.4. `create_po_wizard_line`
+
+**Purpose**: Temporary table for lines in the purchase order creation wizard, representing individual products to be purchased.
+
+**Columns**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `id`                      | integer                     | PRIMARY KEY, DEFAULT nextval(...)             | Unique identifier            |
+| `wizard_id`               | integer                     | FOREIGN KEY (create_po_wizard)                | Related Wizard               |
+| `product_id`              | integer                     | FOREIGN KEY (product_product)                 | Product                      |
+| `product_uom_id`          | integer                     | FOREIGN KEY (uom_uom)                         | Unit of Measure              |
+| `product_qty`             | numeric                     |                                               | Quantity to purchase         |
+| `price_unit`              | numeric                     |                                               | Price per unit               |
+| `price_subtotal`          | numeric                     |                                               | Price subtotal               |
+| `create_uid`              | integer                     | FOREIGN KEY (res_users)                       | Created by User              |
+| `write_uid`               | integer                     | FOREIGN KEY (res_users)                       | Last Updated by User         |
+| `create_date`             | timestamp without time zone |                                               | Odoo: Record Creation Date   |
+| `write_date`              | timestamp without time zone |                                               | Odoo: Record Update Date     |
+
+### 6.2. Updates to Core Tables
+
+#### 6.2.1. `scm_pr_consolidation_session`
+
+**Updates**:
+
+- Added `purchase_order_ids` field: One2many relationship with `purchase.order` model, linking purchase orders created from the consolidation session.
+- Updated state field to include 'po_creation' and 'po_created' states.
+- Added `po_creation_date` field to track when purchase orders were created.
+
+**Columns Added**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `purchase_order_ids`      | One2many                    | Inverse: consolidation_id on purchase.order   | Related Purchase Orders      |
+| `po_creation_date`        | timestamp without time zone |                                               | Date POs Created             |
+
+**State Field Values**:
+
+| Value                     | Description                                                |
+|---------------------------|------------------------------------------------------------|
+| `draft`                   | Initial state, session is being created                    |
+| `selecting_lines`         | User is selecting PR lines to consolidate                  |
+| `in_progress`             | Lines have been selected, consolidation in progress        |
+| `validated`               | Consolidation has been validated                          |
+| `inventory_validation`    | Inventory validation is in progress                       |
+| `po_creation`             | Ready for PO creation                                      |
+| `po_created`              | POs have been created                                      |
+| `done`                    | Process is complete                                        |
+| `cancelled`               | Process has been cancelled                                 |
+
+#### 6.2.2. `purchase_order`
+
+**Updates**:
+
+- Added `consolidation_id` field: Many2one relationship with `scm.pr.consolidation.session` model, linking the purchase order to the consolidation session that created it.
+- Added `is_from_consolidation` field: Computed field indicating whether the purchase order was created from a consolidation session.
+
+**Columns Added**:
+
+| Column Name               | Data Type                   | Constraints                                   | Description                  |
+|---------------------------|-----------------------------|-----------------------------------------------|------------------------------|
+| `consolidation_id`        | integer                     | FOREIGN KEY (scm_pr_consolidation_session)    | Related Consolidation Session|
+| `is_from_consolidation`   | boolean                     | Computed field                                | Created from consolidation   |
+
+## 7. Summary
 
 The schema supports PR consolidation (`scm_pr_consolidation_session`, `scm_consolidated_pr_line`) linked to purchase requests (`purchase_request`). It includes functionality for inventory rules (`scm_inventory_rule`) and forecasting (`scm_forecast`, `scm_forecast_line`). Wizard tables aid in UI processes. Key relationships are established via foreign keys and dedicated relation tables. However, some expected relation tables seem missing, and the `_unknown_*` tables suggest schema errors that need addressing. 

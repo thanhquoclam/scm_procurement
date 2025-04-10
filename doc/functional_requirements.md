@@ -54,8 +54,128 @@
     *   `purchase_request`: Source of purchase requests (likely OCA module).
     *   `mail`: For notifications and activity tracking.
     *   `hr` (Implicit): For `hr.department` if department filtering is used.
+*   **2.5 Constraints:**
+    *   The module must integrate with existing Odoo modules (Stock, Purchase, Purchase Request).
+    *   The module must follow Odoo's standard UI/UX patterns.
+    *   The module must handle large volumes of data efficiently.
+    *   The module must support multi-company environments.
 
 **3. Functional Requirements**
+
+**3.1. PR Consolidation (Phase 1)**
+
+*   **FR-PR-001:** The system shall allow users to create a consolidation session with a date range and optional filters.
+*   **FR-PR-002:** The system shall automatically collect all approved PRs within the specified date range and filters.
+*   **FR-PR-003:** The system shall aggregate quantities by product, creating consolidated lines.
+*   **FR-PR-004:** The system shall allow users to review and adjust consolidated lines.
+*   **FR-PR-005:** The system shall allow users to confirm the consolidation, making it ready for inventory validation.
+
+**3.2. Inventory Validation (Phase 2)**
+
+*   **FR-INV-001:** The system shall check current inventory levels for all products in a confirmed consolidation.
+*   **FR-INV-002:** The system shall compare demand (from consolidated lines) with available stock.
+*   **FR-INV-003:** The system shall categorize inventory status as sufficient, partial, insufficient, or stockout.
+*   **FR-INV-004:** The system shall calculate the quantity to purchase based on the difference between required quantity and available quantity.
+*   **FR-INV-005:** The system shall allow users to review and adjust inventory validation decisions.
+*   **FR-INV-006:** The system shall allow users to confirm inventory validation, making it ready for PO creation.
+*   **FR-INV-007:** The system shall handle inventory exceptions, requiring approval for critical shortages.
+*   **FR-INV-008:** The system shall update safety stock levels based on validation decisions.
+
+**Implementation Status (April 2023):**
+
+*   **FR-INV-001 to FR-INV-006:** These requirements have been implemented with the `validate.inventory.wizard`. The wizard displays all consolidated lines with their current stock, required quantity, and available quantity. Users can filter to view only critical items, and the system calculates the quantity to purchase. After validation, users can proceed to PO creation.
+
+*   **FR-INV-007:** The system is set up to handle inventory exceptions, but the approval workflow is still being refined. The system can request manager approval for critical inventory issues, but the notification system is still being tested.
+
+*   **FR-INV-008:** The system can update safety stock levels based on validation, but the calculation logic is still being refined.
+
+**3.3. PO Creation (Phase 3 - Future)**
+
+*   **FR-PO-001: Create Purchase Orders from Validated Lines**
+
+    *   **Source:** High-Level Req. Phase 3.1
+    *   **Priority:** High
+    *   **Description:** The system shall allow users to create purchase orders from validated and approved consolidation lines, grouping products by vendor and applying appropriate pricing.
+    *   **User Interface (UI) Description:**
+        *   A button (e.g., "Create Purchase Orders") shall be visible and enabled on the `scm_pr_consolidation_session` form view when the record `state` is 'Approved'.
+        *   Clicking the button opens a wizard (`create.po.wizard`) that allows:
+            *   Selection of vendor for the PO
+            *   Setting the order date
+            *   Adding optional notes
+            *   Reviewing and adjusting line quantities
+        *   The wizard displays a list of products with their quantities to purchase, prices, and other relevant information.
+    *   **Business Rules/Logic:**
+        *   Only lines with `quantity_to_purchase > 0` are included in the PO.
+        *   Products are grouped by vendor if multiple vendors are involved.
+        *   Standard prices from the product or vendor pricelist are used.
+        *   The PO is linked to the consolidation session via `consolidation_id`.
+    *   **Data Handling:**
+        *   Input: Selected vendor, order date, notes, and line quantities from the wizard.
+        *   Processing: Create PO and PO lines with the specified data.
+        *   Output: New `purchase.order` record with corresponding `purchase.order.line` records.
+    *   **Preconditions:**
+        *   The `scm_pr_consolidation_session` record exists and its `state` is 'Approved'.
+        *   At least one line has a positive `quantity_to_purchase`.
+        *   User has permission to create purchase orders.
+    *   **Postconditions:**
+        *   A new purchase order is created with the specified vendor and lines.
+        *   The PO is linked to the consolidation session.
+        *   The session's `state` is updated to 'PO Created'.
+    *   **Error Handling/Alternative Flows:**
+        *   If no lines have positive quantities to purchase, display a warning message.
+        *   Handle cases where vendor information is missing or invalid.
+
+    **Implementation Status (April 2023):**
+    *   **FR-PO-001:** Fully implemented with the following features:
+        *   "Create Purchase Orders" button in the consolidation session form view
+        *   `create.po.wizard` for vendor selection and PO creation
+        *   Automatic filtering of lines with positive quantities to purchase
+        *   PO linking to consolidation session
+        *   State management for PO creation process
+
+   **FR-PO-002: Group Products by Vendor**
+
+    *   **Source:** High-Level Req. Phase 3.2
+    *   **Priority:** High
+    *   **Description:** The system shall automatically group products by vendor when creating purchase orders, ensuring efficient procurement processes.
+    *   **Implementation Status (April 2023):**
+    *   **FR-PO-002:** Partially implemented:
+        *   Basic vendor grouping in the PO creation wizard
+        *   Manual vendor selection per PO
+        *   TODO: Automatic vendor assignment based on product-vendor relationships
+
+   **FR-PO-003: Apply Pricing Rules**
+
+    *   **Source:** High-Level Req. Phase 3.3
+    *   **Priority:** High
+    *   **Description:** The system shall apply appropriate pricing rules when creating purchase order lines, considering vendor pricelists and product-specific pricing.
+    *   **Implementation Status (April 2023):**
+    *   **FR-PO-003:** Fully implemented:
+        *   Integration with Odoo's standard pricelist system
+        *   Automatic price calculation based on vendor pricelists
+        *   Support for product-specific pricing rules
+
+   **FR-PO-004: Track PO Creation Status**
+
+    *   **Source:** High-Level Req. Phase 3.4
+    *   **Priority:** Medium
+    *   **Description:** The system shall maintain the status of purchase order creation within the consolidation session, including tracking which lines have been converted to POs.
+    *   **Implementation Status (April 2023):**
+    *   **FR-PO-004:** Fully implemented:
+        *   PO creation status tracking in consolidation session
+        *   State management ('po_created', 'done')
+        *   PO count and linking in the session form view
+
+   **FR-PO-005: Handle Multiple Vendors**
+
+    *   **Source:** High-Level Req. Phase 3.5
+    *   **Priority:** Medium
+    *   **Description:** The system shall support creating multiple purchase orders for different vendors when products in a consolidation session are sourced from various suppliers.
+    *   **Implementation Status (April 2023):**
+    *   **FR-PO-005:** Partially implemented:
+        *   Basic support for creating POs with different vendors
+        *   Manual vendor selection in the wizard
+        *   TODO: Automatic vendor assignment and grouping
 
 ---
 
