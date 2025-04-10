@@ -55,4 +55,43 @@
     <!-- Phase 2-->
     <!-- Extend Consolidation Form View -->
     
+    <record id="view_select_pr_lines_wizard_form" model="ir.ui.view">
+        <field name="name">select.pr.lines.wizard.form</field>
+        <field name="model">select.pr.lines.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Select Lines for Consolidation">
+                <sheet>
+                    <group>
+                        <field name="session_id" readonly="1"/>
+                    </group>
+                    <field name="line_ids">
+                        <tree>
+                            <field name="request_id"/>
+                            <field name="product_id"/>
+                            <field name="product_qty"/>
+                            <field name="product_uom_id"/>
+                            <field name="date_required"/>
+                        </tree>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_consolidate_selected_lines" 
+                            string="Consolidate Selected Lines" 
+                            type="object" 
+                            class="btn-primary"/>
+                    <button string="Cancel" 
+                            class="btn-secondary" 
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_select_pr_lines_wizard" model="ir.actions.act_window">
+        <field name="name">Select Lines for Consolidation</field>
+        <field name="res_model">select.pr.lines.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="model_scm_pr_consolidation_session"/>
+    </record>
 </odoo>

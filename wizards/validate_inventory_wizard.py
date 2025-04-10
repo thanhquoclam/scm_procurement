@@ -8,7 +8,7 @@ class ValidateInventoryWizard(models.TransientModel):
     _name = 'validate.inventory.wizard'
     _description = 'Validate Inventory Wizard'
     
-    consolidation_id = fields.Many2one('scm.consolidation', 'Consolidation', required=True)
+    consolidation_id = fields.Many2one('scm.pr.consolidation.session', 'Consolidation', required=True)
     warehouse_id = fields.Many2one('stock.warehouse', 'Warehouse', required=True)
     line_ids = fields.One2many(
         'validate.inventory.wizard.line',
@@ -200,7 +200,7 @@ class RejectInventoryWizard(models.TransientModel):
     _name = 'reject.inventory.wizard'
     _description = 'Reject Inventory Validation Wizard'
     
-    consolidation_id = fields.Many2one('scm.consolidation', 'Consolidation', required=True)
+    consolidation_id = fields.Many2one('scm.pr.consolidation.session', 'Consolidation', required=True)
     rejection_reason = fields.Text('Rejection Reason', required=True)
     
     def action_reject(self):
