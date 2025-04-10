@@ -44,7 +44,7 @@ Description:
 5.	Manual Overrides: User can override system decisions if needed (e.g., reserving stock for other purposes).
 6.	Confirm Purchase Needs: User confirms the final list of products that need to be purchased.
 
-**Implementation Status (April 2023):**
+**Implementation Status (April 2025):**
 - The inventory validation process has been implemented with the `validate.inventory.wizard`.
 - The wizard displays all consolidated lines with their current stock, required quantity, and available quantity.
 - Users can filter to view only critical items (those with inventory status 'stockout' or 'insufficient').

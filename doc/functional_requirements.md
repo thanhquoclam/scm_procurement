@@ -81,7 +81,7 @@
 *   **FR-INV-007:** The system shall handle inventory exceptions, requiring approval for critical shortages.
 *   **FR-INV-008:** The system shall update safety stock levels based on validation decisions.
 
-**Implementation Status (April 2023):**
+**Implementation Status (April 2025):**
 
 *   **FR-INV-001 to FR-INV-006:** These requirements have been implemented with the `validate.inventory.wizard`. The wizard displays all consolidated lines with their current stock, required quantity, and available quantity. Users can filter to view only critical items, and the system calculates the quantity to purchase. After validation, users can proceed to PO creation.
 

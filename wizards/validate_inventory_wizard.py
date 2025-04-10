@@ -6,21 +6,13 @@ from odoo.exceptions import UserError
 
 class ValidateInventoryWizard(models.TransientModel):
     _name = 'validate.inventory.wizard'
-    _description = 'Validate Inventory Wizard'
+    _description = 'Inventory Validation Wizard'
     
-    consolidation_id = fields.Many2one('scm.pr.consolidation.session', 'Consolidation', required=True)
-    warehouse_id = fields.Many2one('stock.warehouse', 'Warehouse', required=True)
-    line_ids = fields.One2many(
-        'validate.inventory.wizard.line',
-        'wizard_id',
-        string='Items to Validate'
-    )
-    validation_notes = fields.Text('Validation Notes')
-    
-    include_critical_only = fields.Boolean('Critical Issues Only', default=True)
-    auto_approve_non_critical = fields.Boolean('Auto-Approve Non-Critical Issues', default=True)
-    request_manager_approval = fields.Boolean('Request Manager Approval for Critical Issues', default=True)
-    update_safety_stock = fields.Boolean('Update Safety Stock Levels', default=False)
+    session_id = fields.Many2one('scm.pr.consolidation.session', string='Consolidation Session', required=True)
+    line_ids = fields.One2many('validate.inventory.wizard.line', 'wizard_id', string='Lines')
+    include_critical_only = fields.Boolean(string='Show Critical Items Only', default=True)
+    update_safety_stock = fields.Boolean(string='Update Safety Stock Levels', default=False)
+    notes = fields.Text(string='Notes')
     
     # Summary fields
     total_items = fields.Integer('Total Items', compute='_compute_summary')
@@ -51,54 +43,54 @@ class ValidateInventoryWizard(models.TransientModel):
     
     @api.onchange('include_critical_only')
     def _onchange_include_critical_only(self):
-        """Filter lines based on criticality"""
-        if self.consolidation_id:
-            if self.include_critical_only:
-                critical_lines = self.consolidation_id.consolidated_line_ids.filtered(
-                    lambda l: l.inventory_status in ['stockout', 'insufficient'] 
-                    and l.product_id.type in ['product', 'consu']
-                )
-            else:
-                critical_lines = self.consolidation_id.consolidated_line_ids.filtered(
-                    lambda l: l.inventory_status in ['stockout', 'insufficient', 'partial'] 
-                    and l.product_id.type in ['product', 'consu']
-                )
-            
-            # Create wizard line values
-            wizard_line_vals = []
-            for line in critical_lines:
-                wizard_line_vals.append({
-                    'product_id': line.product_id.id,
-                    'uom_id': line.product_uom_id.id,
-                    'current_stock': line.available_quantity,
-                    'required_qty': line.total_quantity,
-                    'available_qty': line.available_quantity,
-                    'notes': line.notes or '',
-                })
-            
-            # Update line_ids with the new values
-            self.line_ids = [(5, 0, 0)]  # Clear existing lines
-            for vals in wizard_line_vals:
-                self.line_ids = [(0, 0, vals)]  # Add new lines
+        if self.include_critical_only:
+            critical_lines = self.line_ids.filtered(lambda l: l.is_critical)
+            self.line_ids = [(6, 0, critical_lines.ids)]
+        else:
+            session = self.session_id
+            if session and session.consolidated_line_ids:
+                wizard_line_vals = []
+                for line in session.consolidated_line_ids:
+                    # Get inventory levels
+                    available_qty = line.product_id.with_context(
+                        location=session.warehouse_id.lot_stock_id.id
+                    ).qty_available
+                    
+                    # Get inventory rule
+                    rule = self.env['scm.inventory.rule'].get_applicable_rule(
+                        line.product_id, 
+                        session.warehouse_id
+                    )
+                    
+                    wizard_line_vals.append((0, 0, {
+                        'product_id': line.product_id.id,
+                        'product_uom_id': line.product_uom_id.id,
+                        'consolidated_line_id': line.id,
+                        'available_qty': available_qty,
+                        'safety_stock_qty': rule.safety_stock_qty if rule else 0.0,
+                        'reorder_point': rule.reorder_point if rule else 0.0,
+                    }))
+                
+                self.line_ids = [(5, 0, 0)] + wizard_line_vals
     
-    @api.onchange('warehouse_id')
-    def _onchange_warehouse_id(self):
-        """Update stock values when warehouse changes according to FR-SCM-004"""
-        if self.warehouse_id and self.line_ids:
+    @api.onchange('session_id')
+    def _onchange_session_id(self):
+        """Update stock values when session changes according to FR-SCM-004"""
+        if self.session_id and self.line_ids:
             for line in self.line_ids:
                 if line.product_id:
-                    # Get the stock location for the warehouse
-                    stock_location = self.warehouse_id.lot_stock_id
+                    # Get the stock location for the session
+                    stock_location = self.session_id.warehouse_id.lot_stock_id
                     if stock_location:
-                        # Get current stock (actual on-hand quantity) from the specific warehouse
+                        # Get current stock (actual on-hand quantity) from the specific session
                         current_stock = line.product_id.with_context(
                             location=stock_location.id
                         ).qty_available
                         
-                        # Get inventory rule parameters for the product in this warehouse
+                        # Get inventory rule parameters for the product in this session
                         rule = self.env['scm.inventory.rule'].get_applicable_rule(
                             line.product_id, 
-                            self.warehouse_id
+                            self.session_id.warehouse_id
                         )
                         
                         # Calculate incoming quantity (moves to the stock location)
@@ -122,122 +114,108 @@ class ValidateInventoryWizard(models.TransientModel):
                         line.available_qty = current_stock + incoming_qty - outgoing_qty  # Forecast quantity
     
     def action_validate_inventory(self):
-        """Validate inventory and handle exceptions"""
         self.ensure_one()
         
-        if not self.line_ids:
-            raise UserError(_("No lines to validate."))
+        # Validate all lines
+        for line in self.line_ids:
+            if line.inventory_exception and not line.exception_approved_by:
+                raise UserError(_('All inventory exceptions must be approved before proceeding.'))
         
-        # Handle critical items
-        critical_lines = self.line_ids.filtered(
-            lambda l: l.inventory_status in ['stockout', 'insufficient']
-        )
-        
-        # Handle non-critical items
-        non_critical_lines = self.line_ids.filtered(
-            lambda l: l.inventory_status not in ['stockout', 'insufficient']
-        )
-        
-        # Auto-approve non-critical items if enabled
-        if self.auto_approve_non_critical and non_critical_lines:
-            for line in non_critical_lines:
-                line.write({
-                    'inventory_exception': True,
-                    'exception_approved_by': self.env.user.id,
-                    'exception_approval_date': fields.Datetime.now(),
-                    'inventory_notes': _("Auto-approved: Below reorder point but not critical.")
-                })
-        
-        # Update consolidation
-        self.consolidation_id.write({
-            'inventory_validation_notes': self.validation_notes,
-            'pending_approval': self.request_manager_approval and bool(critical_lines),
-            'inventory_status': 'in_progress',
-        })
-        
-        # Request manager approval if needed
-        if self.request_manager_approval and critical_lines:
-            # Find users with inventory approval rights
-            inventory_manager_group = self.env.ref('stock.group_stock_manager')
-            inventory_managers = inventory_manager_group.users
-            
-            if inventory_managers:
-                # Prepare email template
-                template = self.env.ref('scm_procurement.mail_template_inventory_approval')
-                
-                # Send notification
-                for manager in inventory_managers:
-                    template.send_mail(
-                        self.consolidation_id.id, 
-                        force_send=True,
-                        email_values={'email_to': manager.email}
-                    )
-        else:
-            # First validate inventory and move to PO creation state
-            self.consolidation_id.write({
-                'inventory_validated': True,
-                'inventory_validation_date': fields.Datetime.now(),
-                'inventory_validated_by': self.env.user.id,
-                'inventory_status': 'approved',
-                'pending_approval': False,
-                'state': 'po_creation',  # Move directly to PO creation state
-            })
-            
-            # Trigger the PO creation wizard
-            return {
-                'name': _('Create Purchase Orders'),
-                'type': 'ir.actions.act_window',
-                'res_model': 'create.po.wizard',
-                'view_mode': 'form',
-                'target': 'new',
-                'context': {
-                    'default_consolidation_id': self.consolidation_id.id,
-                    'default_warehouse_id': self.consolidation_id.warehouse_id.id,
-                }
-            }
-        
-        # Update safety stock if requested
+        # Update safety stock levels if requested
         if self.update_safety_stock:
             self._update_safety_stock_levels()
         
-        # Log message in chatter
-        self.consolidation_id.message_post(
-            body=_("Inventory validation by %s:\n%s") % (
-                self.env.user.name, self.validation_notes or 'No notes provided'
-            ),
-            subtype_id=self.env.ref('mail.mt_note').id
-        )
+        # Process critical and non-critical items
+        critical_lines = self.line_ids.filtered(lambda l: l.is_critical)
+        non_critical_lines = self.line_ids.filtered(lambda l: not l.is_critical)
         
-        # Return action to refresh the view
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-        }
+        # Auto-approve non-critical items
+        for line in non_critical_lines:
+            line.write({
+                'inventory_exception': False,
+                'exception_approved_by': self.env.user.id,
+                'exception_approval_date': fields.Datetime.now(),
+            })
+        
+        # Create activities for critical items
+        if critical_lines:
+            self._create_critical_items_activities(critical_lines)
+        
+        # Update session state
+        self.session_id.write({
+            'state': 'validated',
+            'inventory_validation_date': fields.Datetime.now(),
+            'inventory_validated_by': self.env.user.id,
+            'inventory_notes': self.notes,
+        })
+        
+        return {'type': 'ir.actions.act_window_close'}
     
     def _update_safety_stock_levels(self):
-        """Update safety stock levels based on validation"""
-        inventory_rule_obj = self.env['scm.inventory.rule']
-        
+        """Update safety stock levels based on inventory validation results."""
         for line in self.line_ids:
-            # Find applicable rule
-            rule = inventory_rule_obj.get_applicable_rule(line.product_id, self.warehouse_id)
-            
-            if rule:
-                # Recalculate safety stock and reorder points
-                rule.calculate_safety_stock()
-                rule.calculate_reorder_point()
-            else:
-                # Create new rule with default values
-                rule_vals = {
-                    'name': line.product_id.name,
-                    'product_id': line.product_id.id,
-                    'warehouse_id': self.warehouse_id.id,
-                    'company_id': line.company_id.id,
-                }
+            if line.inventory_status in ['stockout', 'below_safety']:
+                # Get current inventory rule
+                rule = self.env['scm.inventory.rule'].get_applicable_rule(
+                    line.product_id,
+                    self.session_id.warehouse_id
+                )
                 
-                new_rule = inventory_rule_obj.create(rule_vals)
-                new_rule.calculate_safety_stock()
-                new_rule.calculate_reorder_point()
+                if rule:
+                    # Calculate new safety stock (20% increase for items with issues)
+                    current_safety_stock = rule.safety_stock_qty
+                    new_safety_stock = current_safety_stock * 1.2
+                    
+                    # Adjust based on lead time and average daily usage
+                    lead_time_days = rule.lead_time_days or 1
+                    avg_daily_usage = rule.average_daily_usage or 0
+                    min_safety_stock = lead_time_days * avg_daily_usage
+                    
+                    new_safety_stock = max(new_safety_stock, min_safety_stock)
+                    
+                    # Update the rule
+                    rule.write({
+                        'safety_stock_qty': new_safety_stock,
+                        'last_update_date': fields.Date.today(),
+                    })
+                    
+                    # Log the change
+                    self.env['scm.inventory.rule.history'].create({
+                        'rule_id': rule.id,
+                        'old_safety_stock': current_safety_stock,
+                        'new_safety_stock': new_safety_stock,
+                        'update_reason': 'Updated based on inventory validation results',
+                        'updated_by': self.env.user.id,
+                    })
+
+    def _create_critical_items_activities(self, critical_lines):
+        """Create activities for inventory managers to review critical items."""
+        managers = self.env['res.users'].search([
+            ('groups_id', 'in', self.env.ref('stock.group_stock_manager').id)
+        ])
+        
+        if not managers:
+            return
+        
+        # Create activity for each manager
+        for manager in managers:
+            self.env['mail.activity'].create({
+                'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
+                'note': _('Please review and approve the following critical inventory items:\n\n%s') % 
+                    '\n'.join(['- %s: %s' % (l.product_id.name, l.inventory_status) for l in critical_lines]),
+                'user_id': manager.id,
+                'res_id': self.session_id.id,
+                'res_model_id': self.env['ir.model']._get('scm.pr.consolidation.session').id,
+                'summary': _('Critical Inventory Items Review Required'),
+            })
+            
+            # Send email notification
+            template = self.env.ref('scm_procurement.mail_template_critical_inventory_review')
+            if template:
+                template.with_context(
+                    critical_lines=critical_lines,
+                    session=self.session_id
+                ).send_mail(self.session_id.id, force_send=True)
 
     @api.model
     def default_get(self, fields_list):
@@ -263,97 +241,82 @@ class ValidateInventoryWizard(models.TransientModel):
                     })
                 
                 res['line_ids'] = [(0, 0, vals) for vals in wizard_line_vals]
-                res['consolidation_id'] = consolidation.id
-                res['warehouse_id'] = consolidation.warehouse_id.id
+                res['session_id'] = consolidation.id
                 res['include_critical_only'] = True
         return res
 
 class ValidateInventoryWizardLine(models.TransientModel):
     _name = 'validate.inventory.wizard.line'
-    _description = 'Inventory Validation Line'
+    _description = 'Inventory Validation Wizard Line'
 
-    wizard_id = fields.Many2one(
-        'validate.inventory.wizard',
-        string='Wizard'
-    )
-    product_id = fields.Many2one(
-        'product.product',
-        string='Product',
-        required=True
-    )
-    uom_id = fields.Many2one(
-        'uom.uom',
-        string='Unit of Measure',
-        related='product_id.uom_id',
-        readonly=True,
-        store=True,
-        help='Unit of Measure for the product'
-    )
-    current_stock = fields.Float(
-        string='Current Stock',
-        readonly=True,
-        help='Actual on-hand quantity in the location'
-    )
-    required_qty = fields.Float(
-        string='Required Quantity'
-    )
-    available_qty = fields.Float(
-        string='Available Quantity',
-        help='Forecast quantity (Current Stock + Incoming - Outgoing)'
-    )
-    quantity_to_purchase = fields.Float(
-        string='Quantity to Purchase',
-        compute='_compute_quantity_to_purchase',
-        store=True
-    )
+    wizard_id = fields.Many2one('validate.inventory.wizard', string='Wizard', required=True, ondelete='cascade')
+    product_id = fields.Many2one('product.product', string='Product', required=True)
+    product_uom_id = fields.Many2one('uom.uom', string='Unit of Measure', required=True)
+    consolidated_line_id = fields.Many2one('scm.consolidated.pr.line', string='Consolidated Line')
+    
+    # Inventory fields
+    available_qty = fields.Float(string='Available Quantity', digits='Product Unit of Measure')
+    safety_stock_qty = fields.Float(string='Safety Stock', digits='Product Unit of Measure')
+    reorder_point = fields.Float(string='Reorder Point', digits='Product Unit of Measure')
     inventory_status = fields.Selection([
-        ('sufficient', 'Sufficient'),
-        ('partial', 'Partial'),
-        ('insufficient', 'Insufficient'),
-        ('stockout', 'Stockout'),
+        ('ok', 'OK'),
         ('below_safety', 'Below Safety Stock'),
-        ('below_reorder', 'Below Reorder Point')
+        ('stockout', 'Stockout')
     ], string='Inventory Status', compute='_compute_inventory_status', store=True)
-    notes = fields.Text(
-        string='Notes'
-    )
-    inventory_exception = fields.Boolean(
-        string='Inventory Exception',
-        help='Indicates if this line has an inventory exception'
-    )
-    exception_approved_by = fields.Many2one(
-        'res.users',
-        string='Exception Approved By',
-        help='User who approved the inventory exception'
-    )
-    exception_approval_date = fields.Datetime(
-        string='Exception Approval Date',
-        help='Date and time when the inventory exception was approved'
-    )
-    inventory_notes = fields.Text(
-        string='Inventory Notes',
-        help='Additional notes about inventory validation'
-    )
-
-    @api.depends('required_qty', 'available_qty')
-    def _compute_quantity_to_purchase(self):
-        for line in self:
-            if line.required_qty > line.available_qty:
-                line.quantity_to_purchase = line.required_qty - line.available_qty
-            else:
-                line.quantity_to_purchase = 0.0
-                
-    @api.depends('current_stock', 'required_qty', 'available_qty')
+    
+    # Exception handling fields
+    inventory_exception = fields.Boolean(string='Has Exception', default=False)
+    exception_approved_by = fields.Many2one('res.users', string='Approved By')
+    exception_approval_date = fields.Datetime(string='Approval Date')
+    inventory_notes = fields.Text(string='Notes')
+    is_critical = fields.Boolean(string='Critical Item', compute='_compute_is_critical', store=True)
+    
+    @api.depends('available_qty', 'safety_stock_qty')
     def _compute_inventory_status(self):
         for line in self:
-            if line.available_qty >= line.required_qty:
-                line.inventory_status = 'sufficient'
-            elif line.available_qty > 0:
-                line.inventory_status = 'partial'
-            elif line.current_stock == 0:
+            if line.available_qty <= 0:
                 line.inventory_status = 'stockout'
+            elif line.available_qty < line.safety_stock_qty:
+                line.inventory_status = 'below_safety'
             else:
-                line.inventory_status = 'insufficient'
+                line.inventory_status = 'ok'
+    
+    @api.depends('inventory_status')
+    def _compute_is_critical(self):
+        for line in self:
+            line.is_critical = line.inventory_status in ['stockout', 'below_safety']
+    
+    @api.model
+    def default_get(self, fields_list):
+        res = super().default_get(fields_list)
+        if 'line_ids' in fields_list and self.env.context.get('active_id'):
+            session = self.env['scm.pr.consolidation.session'].browse(self.env.context.get('active_id'))
+            if session.consolidated_line_ids:
+                line_vals = []
+                for line in session.consolidated_line_ids:
+                    # Get inventory levels
+                    available_qty = line.product_id.with_context(
+                        location=session.warehouse_id.lot_stock_id.id
+                    ).qty_available
+                    
+                    # Get inventory rule
+                    rule = self.env['scm.inventory.rule'].get_applicable_rule(
+                        line.product_id, 
+                        session.warehouse_id
+                    )
+                    
+                    line_vals.append((0, 0, {
+                        'product_id': line.product_id.id,
+                        'product_uom_id': line.product_uom_id.id,
+                        'consolidated_line_id': line.id,
+                        'available_qty': available_qty,
+                        'safety_stock_qty': rule.safety_stock_qty if rule else 0.0,
+                        'reorder_point': rule.reorder_point if rule else 0.0,
+                    }))
+                
+                if line_vals:
+                    res['line_ids'] = line_vals
+        return res
 
 class RejectInventoryWizard(models.TransientModel):
     _name = 'reject.inventory.wizard'
