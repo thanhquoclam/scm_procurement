@@ -3,6 +3,9 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 from datetime import datetime
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class PRConsolidationSession(models.Model):
@@ -31,14 +34,15 @@ class PRConsolidationSession(models.Model):
     # Define selection field using a method
     state = fields.Selection([
         ('draft', 'Draft'),
+        ('selecting_lines', 'Selecting Lines'),
         ('in_progress', 'In Progress'),
         ('validated', 'Validated'),
-        ('po_created', 'POs Created'),
-        ('done', 'Done'),
-        ('cancelled', 'Cancelled'),
         ('inventory_validation', 'Inventory Validation'),
-        ('approved', 'Approved')
-    ], string='Status', default='draft')
+        ('approved', 'Approved'),
+        ('po_created', 'PO Created'),
+        ('done', 'Done'),
+        ('cancelled', 'Cancelled')
+    ], string='Status', default='draft', tracking=True, required=True)
     
     user_id = fields.Many2one(
         'res.users',
@@ -46,15 +50,14 @@ class PRConsolidationSession(models.Model):
         default=lambda self: self.env.user,
         tracking=True
     )
-    department_ids = fields.Many2many(
-        'hr.department',
-        string='Departments',
-        help='Filter PRs by these departments. Leave empty to include all departments.'
-    )
     category_ids = fields.Many2many(
         'product.category',
         string='Product Categories',
-        help='Filter PRs by these product categories. Leave empty to include all categories.'
+        relation='scm_consolidation_category_rel',
+        column1='consolidation_id',
+        column2='category_id',
+        help='Filter PRs by these product categories. Leave empty to include all categories.',
+        tracking=True
     )
     consolidated_line_ids = fields.One2many(
         'scm.consolidated.pr.line',
@@ -157,12 +160,154 @@ class PRConsolidationSession(models.Model):
     def action_start_consolidation(self):
         """Start the consolidation process."""
         self.ensure_one()
-    
-        self._collect_purchase_requests()
-    
-        return self.write({
-            'state': 'in_progress'
+        if self.state != 'draft':
+            raise UserError(_('Consolidation can only be started from draft state.'))
+
+        if not self.date_from or not self.date_to:
+            raise UserError(_('Please set start and end dates.'))
+
+        if self.date_from > self.date_to:
+            raise UserError(_('End date cannot be earlier than start date.'))
+
+        # Search for approved purchase requests in the date range
+        domain = [
+            ('state', '=', 'approved'),
+            ('date_start', '>=', self.date_from),
+            ('date_start', '<=', self.date_to)
+        ]
+        
+        if self.category_ids:
+            domain.append(('line_ids.product_id.categ_id', 'in', self.category_ids.ids))
+        
+        purchase_requests = self.env['purchase.request'].search(domain)
+        
+        if not purchase_requests:
+            raise UserError(_('No approved purchase requests found for the selected period.'))
+        
+        # Link the purchase requests to this session
+        self.write({
+            'state': 'selecting_lines',
+            'purchase_request_ids': [(6, 0, purchase_requests.ids)]
         })
+        
+        return {
+            'name': _('Select Lines for Consolidation'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'select.pr.lines.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'active_id': self.id}
+        }
+
+    def _process_pr_lines_safely(self, pr_lines, safe_self=None):
+        """Process purchase request lines using ORM but with safe approach."""
+        _logger.info("Processing purchase request lines: %s", pr_lines)
+        
+        if not pr_lines:
+            _logger.warning("No purchase request lines provided")
+            return False
+        
+        if safe_self is None:
+            safe_self = self.with_context(tracking_disable=True, mail_notrack=True)
+        
+        # Dictionary to group PR lines by product
+        product_lines = {}
+        
+        # Process each line
+        for line in pr_lines:
+            _logger.info("Processing line: %s", line)
+            if not line.product_id:
+                continue
+                
+            product_id = line.product_id.id
+            
+            # Group by product
+            if product_id not in product_lines:
+                product_lines[product_id] = {
+                    'product': line.product_id,
+                    'uom': line.product_uom_id,
+                    'total_qty': 0,
+                    'pr_lines': [],
+                    'earliest_date': line.date_required or line.request_id.date_start,
+                }
+            
+            # Update group data
+            data = product_lines[product_id]
+            data['total_qty'] += line.product_qty
+            data['pr_lines'].append(line)
+            
+            # Update earliest date needed
+            line_date = line.date_required or line.request_id.date_start
+            if line_date and (not data['earliest_date'] or line_date < data['earliest_date']):
+                data['earliest_date'] = line_date
+        
+        _logger.info("Product lines grouped: %s", product_lines)
+        
+        # Process each product group to create/update consolidated lines
+        created_lines = []
+        for product_id, data in product_lines.items():
+            try:
+                _logger.info("Creating/updating consolidated line for product: %s", product_id)
+                ConsolidatedLine = self.env['scm.consolidated.pr.line'].with_context(
+                    tracking_disable=True, 
+                    mail_notrack=True
+                )
+                
+                # Check if a consolidated line already exists for this product
+                existing_line = safe_self.consolidated_line_ids.filtered(
+                    lambda l: l.product_id.id == product_id
+                )
+                
+                # Convert pr_lines list to recordset
+                pr_line_ids = [(6, 0, [line.id for line in data['pr_lines']])]
+                
+                if existing_line:
+                    _logger.info("Updating existing line: %s", existing_line)
+                    # Update existing line
+                    existing_line.write({
+                        'total_quantity': data['total_qty'],
+                        'purchase_request_line_ids': pr_line_ids,
+                        'earliest_date_required': data['earliest_date'],
+                    })
+                    created_lines.append(existing_line)
+                else:
+                    _logger.info("Creating new consolidated line for product: %s", product_id)
+                    # Create new consolidated line
+                    new_line = ConsolidatedLine.create({
+                        'consolidation_id': safe_self.id,
+                        'product_id': product_id,
+                        'product_uom_id': data['uom'].id,
+                        'total_quantity': data['total_qty'],
+                        'purchase_request_line_ids': pr_line_ids,
+                        'earliest_date_required': data['earliest_date'],
+                        'state': 'draft'
+                    })
+                    _logger.info("Created new consolidated line: %s", new_line)
+                    created_lines.append(new_line)
+            except Exception as line_err:
+                _logger.error("Error processing product %s: %s", product_id, str(line_err))
+                # Continue to next product
+        
+        # Refresh the record to get the updated consolidated lines
+        safe_self.invalidate_recordset()
+        
+        # Log the current state of consolidated lines
+        _logger.info("Current consolidated lines before recompute: %s", safe_self.consolidated_line_ids)
+        _logger.info("Created/Updated lines: %s", created_lines)
+        
+        # Force a recompute of the consolidated lines
+        for line in safe_self.consolidated_line_ids:
+            line._compute_available_quantity()
+            line._compute_quantity_to_purchase()
+            line._compute_inventory_status()
+        
+        # Log final state
+        _logger.info("Final consolidated lines after recompute: %s", safe_self.consolidated_line_ids)
+        
+        # Update the session state to in_progress
+        safe_self.write({'state': 'in_progress'})
+        
+        return True
 
     def action_validate_consolidation(self):
         """Validate the consolidated lines."""
@@ -177,9 +322,77 @@ class PRConsolidationSession(models.Model):
     def action_start_inventory_validation(self):
         """Start the inventory validation phase."""
         self.ensure_one()
-        return self.write({
-            'state': 'inventory_validation'
-        })
+        if self.state != 'validated':
+            raise UserError(_("Inventory validation can only be started from Validated state."))
+        
+        # Update state to inventory validation
+        self.write({'state': 'inventory_validation'})
+        
+        # Get consolidated lines with inventory issues
+        lines_with_issues = self.consolidated_line_ids.filtered(
+            lambda l: l.inventory_status in ['below_safety', 'below_reorder'] and l.product_id.type in ['product', 'consu']
+        )
+        
+        # Create wizard lines
+        wizard_line_vals = []
+        for line in lines_with_issues:
+            wizard_line_vals.append({
+                'product_id': line.product_id.id,
+                'onhand_qty': line.available_quantity,
+                'required_qty': line.total_quantity,
+                'forecast_qty': line.available_quantity,
+                'notes': line.notes or '',
+            })
+        
+        # Open the validation wizard
+        return {
+            'name': _('Validate Inventory'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'validate.inventory.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_warehouse_id': self.warehouse_id.id,
+                'default_line_ids': wizard_line_vals,
+            }
+        }
+
+    def button_validate_inventory(self):
+        """Open inventory validation wizard"""
+        self.ensure_one()
+        
+        if self.state != 'inventory_validation':
+            raise UserError(_("Inventory validation can only be performed in Inventory Validation state."))
+        
+        # Get consolidated lines with inventory issues
+        lines_with_issues = self.consolidated_line_ids.filtered(
+            lambda l: l.inventory_status in ['below_safety', 'below_reorder'] and l.product_id.type in ['product', 'consu']
+        )
+        
+        # Create wizard lines
+        wizard_line_vals = []
+        for line in lines_with_issues:
+            wizard_line_vals.append({
+                'product_id': line.product_id.id,
+                'onhand_qty': line.available_quantity,
+                'required_qty': line.total_quantity,
+                'forecast_qty': line.available_quantity,
+                'notes': line.notes or '',
+            })
+        
+        return {
+            'name': _('Validate Inventory'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'validate.inventory.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_warehouse_id': self.warehouse_id.id,
+                'default_line_ids': wizard_line_vals,
+            }
+        }
 
     def action_approve_inventory(self):
         """Approve the inventory validation."""
@@ -187,6 +400,32 @@ class PRConsolidationSession(models.Model):
         return self.write({
             'state': 'approved'
         })
+
+    def action_move_to_po_creation(self):
+        """Move the consolidation session to PO creation state."""
+        self.ensure_one()
+        
+        if self.state not in ['approved', 'inventory_validation']:
+            raise UserError(_("Cannot move to PO creation from current state."))
+            
+        # Update state and trigger PO suggestion generation
+        self.write({
+            'state': 'po_creation',
+            'po_creation_date': fields.Datetime.now()
+        })
+        
+        # Trigger the PO suggestion wizard
+        return {
+            'name': _('Create Purchase Orders'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'create.po.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_warehouse_id': self.warehouse_id.id,
+            }
+        }
 
     def action_create_purchase_orders(self):
         """Create purchase orders from consolidated lines."""
@@ -230,110 +469,54 @@ class PRConsolidationSession(models.Model):
     def action_view_purchase_requests(self):
         """Open related purchase requests."""
         self.ensure_one()
-        action = self.env.ref('purchase_request.purchase_request_action').read()[0]
-        action['domain'] = [('id', 'in', self.purchase_request_ids.ids)]
-        return action
-
-    def _collect_purchase_requests(self):
-        self.ensure_one()
         
-        # Define domain to search for approved purchase requests
-        domain = [
-            ('state', '=', 'approved'),
-            ('date_start', '>=', self.date_from),
-            ('date_start', '<=', self.date_to)
-        ]
+        # Define the expected XML ID - **Verify this is correct for your purchase_request module version**
+        xml_id = 'purchase_request.purchase_request_action' 
         
-        # Add department filter if specified
-        if self.department_ids:
-            domain.append(('department_id', 'in', self.department_ids.ids))
-        
-        # Search for purchase requests matching the criteria
-        purchase_requests = self.env['purchase.request'].search(domain)
-        
-        # Skip if no PRs found
-        if not purchase_requests:
-            raise UserError(_("No approved Purchase Requests found for the selected period."))
-        
-        # Link PRs to this consolidation
-        purchase_requests.write({
-            'consolidation_ids': [(4, self.id)]
-        })
-        
-        # Now process the PR lines to create consolidated lines
-        self._consolidate_pr_lines(purchase_requests)
-        
-        return True
-    
-    def _consolidate_pr_lines(self, purchase_requests):
-        self.ensure_one()
-        
-        # Dictionary to group PR lines by product
-        product_lines = {}
-        
-        # Process each purchase request
-        for pr in purchase_requests:
-            for line in pr.line_ids.filtered(lambda l: l.product_id):
-                # Skip if product category filter is applied and not matching
-                if self.category_ids and line.product_id.categ_id.id not in self.category_ids.ids:
-                    continue
-                
-                # Group by product
-                if line.product_id.id not in product_lines:
-                    product_lines[line.product_id.id] = {
-                        'product': line.product_id,
-                        'uom': line.product_uom_id,
-                        'total_qty': 0,
-                        'pr_lines': [],
-                        'earliest_date': line.date_required or pr.date_start,
-                        'highest_priority': line.priority or 'normal'
-                    }
-                
-                # Update group data
-                product_data = product_lines[line.product_id.id]
-                product_data['total_qty'] += line.product_qty
-                product_data['pr_lines'].append(line)
-                
-                # Update earliest date needed
-                line_date = line.date_required or pr.date_start
-                if line_date and line_date < product_data['earliest_date']:
-                    product_data['earliest_date'] = line_date
-                
-                # Update highest priority
-                priority_order = {'low': 0, 'normal': 1, 'high': 2, 'critical': 3}
-                line_priority = line.priority or 'normal'
-                if priority_order.get(line_priority, 1) > priority_order.get(product_data['highest_priority'], 1):
-                    product_data['highest_priority'] = line_priority
-        
-        # Create consolidated lines
-        for product_id, data in product_lines.items():
-            # Check if a line already exists for this product
-            existing_line = self.consolidated_line_ids.filtered(
-                lambda l: l.product_id.id == product_id
-            )
+        try:
+            # Try to get the action reference
+            action = self.env.ref(xml_id, raise_if_not_found=False)
+            action_data = None
             
-            if existing_line:
-                # Update existing line
-                existing_line.write({
-                    'total_quantity': data['total_qty'],
-                    'purchase_request_line_ids': [(6, 0, [line.id for line in data['pr_lines']])],
-                    'earliest_date_required': data['earliest_date'],
-                    'priority': data['highest_priority']
-                })
+            if action:
+                # Read the action definition if found via ref
+                action_data = action.read()[0]
             else:
-                # Create new consolidated line
-                self.env['scm.consolidated.pr.line'].create({
-                    'consolidation_id': self.id,
-                    'product_id': product_id,
-                    'product_uom_id': data['uom'].id,
-                    'total_quantity': data['total_qty'],
-                    'purchase_request_line_ids': [(6, 0, [line.id for line in data['pr_lines']])],
-                    'earliest_date_required': data['earliest_date'],
-                    'priority': data['highest_priority'],
-                    'state': 'draft'
-                })
-        
-        return True
+                _logger.warning(f"Action with XML ID '{xml_id}' not found. Attempting fallback search.")
+                # Fallback: Search for *any* action associated with the purchase.request model
+                action_search = self.env['ir.actions.act_window'].search(
+                    [('res_model', '=', 'purchase.request'), ('view_mode', 'like', 'tree')], 
+                    limit=1, 
+                    order='id asc' # Try to get a stable result
+                )
+                if not action_search: 
+                    # Try again without view_mode filter if the first search failed
+                     action_search = self.env['ir.actions.act_window'].search(
+                        [('res_model', '=', 'purchase.request')], 
+                        limit=1, 
+                        order='id asc'
+                     )
+                
+                if action_search:
+                    _logger.info(f"Fallback successful: Found action ID {action_search.id} for model purchase.request")
+                    action_data = action_search.read()[0]
+                else:
+                     _logger.error("Fallback failed: Could not find any window action for model 'purchase.request'.")
+                     raise UserError(_("Could not find any action to open Purchase Requests. Please check the 'purchase_request' module installation and configuration."))
+                
+            # Set the domain to show only related PRs
+            action_data['domain'] = [('id', 'in', self.purchase_request_ids.ids)]
+            # Ensure context is preserved or initialized
+            action_data.setdefault('context', {})
+            # Ensure view mode includes list/tree if possible
+            if 'view_mode' in action_data and 'tree' not in action_data['view_mode']:
+                 action_data['view_mode'] = 'tree,form' + action_data['view_mode'].replace('tree','').replace('form','')
+            
+            return action_data
+            
+        except Exception as e:
+            _logger.error(f"Error trying to open purchase requests view (XML ID '{xml_id}'): {e}", exc_info=True)
+            raise UserError(_("Could not open the Purchase Requests view. Error: %s") % e)
     
     # Phase 2 additions
     # Add inventory validation fields
@@ -362,80 +545,6 @@ class PRConsolidationSession(models.Model):
     #     ('approved', 'Approved')
     # ])
 
-    def button_validate_inventory(self):
-        """Open inventory validation wizard"""
-        self.ensure_one()
-        
-        if self.state not in ['draft', 'reviewed', 'inventory_validation']:
-            raise UserError(_("Inventory validation can only be performed in Draft, Reviewed or Inventory Validation states."))
-        
-        # Get consolidated lines with inventory issues
-        lines_with_issues = self.consolidated_line_ids.filtered(
-            lambda l: l.inventory_status in ['below_safety', 'below_reorder'] and l.product_id.type in ['product', 'consu']
-        )
-        
-        # Update state to inventory validation if needed
-        if self.state != 'inventory_validation':
-            self.write({'state': 'inventory_validation'})
-        
-        return {
-            'name': _('Validate Inventory'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'validate.inventory.wizard',
-            'view_mode': 'form',
-            'target': 'new',
-            'context': {
-                'default_consolidation_id': self.id,
-                'default_line_ids': [(6, 0, lines_with_issues.ids)],
-                'default_warehouse_id': self.warehouse_id.id,
-            }
-        }
-    
-    def button_inventory_approved(self):
-        """Mark inventory as approved"""
-        self.ensure_one()
-        
-        if self.state != 'inventory_validation':
-            raise UserError(_("Cannot approve inventory for consolidation not in Inventory Validation state."))
-        
-        self.write({
-            'inventory_validated': True,
-            'inventory_validation_date': fields.Datetime.now(),
-            'inventory_validated_by': self.env.user.id,
-            'inventory_status': 'approved',
-            'state': 'approved',
-            'pending_approval': False,
-        })
-        
-        # Log message in chatter
-        self.message_post(
-            body=_("Inventory validation approved by %s on %s") % (
-                self.env.user.name, fields.Datetime.now()
-            ),
-            subtype_id=self.env.ref('mail.mt_note').id
-        )
-        
-        return True
-    
-    def button_reject_inventory(self):
-        """Reject inventory validation"""
-        self.ensure_one()
-        
-        if self.state != 'inventory_validation':
-            raise UserError(_("Cannot reject inventory for consolidation not in Inventory Validation state."))
-        
-        # Open wizard to collect rejection reason
-        return {
-            'name': _('Reject Inventory Validation'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'reject.inventory.wizard',
-            'view_mode': 'form',
-            'target': 'new',
-            'context': {
-                'default_consolidation_id': self.id,
-            }
-        }
-    
     @api.depends('consolidated_line_ids.inventory_status')
     def _compute_inventory_status(self):
         """Compute inventory status flags"""
@@ -578,4 +687,90 @@ class PRConsolidationSession(models.Model):
                 'type': 'info',
             }
         }
+
+    def button_inventory_approved(self):
+        """Approve the inventory validation and move to approved state."""
+        self.ensure_one()
+        
+        if self.state != 'inventory_validation':
+            raise UserError(_("Inventory can only be approved when in Inventory Validation state."))
+        
+        # Check if there are any critical shortages that need manager approval
+        if self.has_critical_shortages and not self.env.user.has_group('stock.group_stock_manager'):
+            raise UserError(_("Only Inventory Managers can approve sessions with critical shortages."))
+        
+        # Update the session
+        self.write({
+            'state': 'approved',
+            'inventory_validated': True,
+            'inventory_validation_date': fields.Datetime.now(),
+            'inventory_validated_by': self.env.user.id,
+            'pending_approval': False
+        })
+        
+        # Log the approval in the chatter
+        self.message_post(
+            body=_("Inventory validation approved by %s") % self.env.user.name,
+            subtype_id=self.env.ref('mail.mt_note').id
+        )
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Inventory Approved'),
+                'message': _("The inventory validation has been approved. You can now proceed with creating purchase orders."),
+                'sticky': False,
+                'type': 'success',
+            }
+        }
+
+
+class SelectPRLinesWizard(models.TransientModel):
+    _name = 'select.pr.lines.wizard'
+    _description = 'Select Purchase Request Lines for Consolidation'
+
+    session_id = fields.Many2one('scm.pr.consolidation.session', string='Consolidation Session', required=True)
+    purchase_request_ids = fields.Many2many('purchase.request', string='Purchase Requests', compute='_compute_purchase_request_ids', store=True)
+    line_ids = fields.Many2many('purchase.request.line', string='Purchase Request Lines', domain="[('request_id', 'in', purchase_request_ids.ids), ('state', '=', 'approved')]")
+    date_from = fields.Date(string='Date From', related='session_id.date_from', readonly=True)
+    date_to = fields.Date(string='Date To', related='session_id.date_to', readonly=True)
+    user_id = fields.Many2one('res.users', string='Responsible', related='session_id.user_id', readonly=True)
+    warehouse_id = fields.Many2one('stock.warehouse', string='Warehouse', related='session_id.warehouse_id', readonly=True)
+
+    @api.depends('session_id')
+    def _compute_purchase_request_ids(self):
+        for wizard in self:
+            if wizard.session_id:
+                wizard.purchase_request_ids = wizard.session_id.purchase_request_ids
+            else:
+                wizard.purchase_request_ids = False
+
+    def action_confirm(self):
+        self.ensure_one()
+        if not self.line_ids:
+            raise UserError(_("Please select at least one line to consolidate."))
+        
+        # Update the consolidation session with selected lines
+        self.session_id.write({
+            'consolidated_line_ids': [(0, 0, {
+                'product_id': line.product_id.id,
+                'product_uom_id': line.product_uom_id.id,
+                'total_quantity': line.product_qty,
+                'available_quantity': line.product_id.qty_available,
+                'quantity_to_purchase': line.product_qty - line.product_id.qty_available,
+                'inventory_status': 'available' if line.product_id.qty_available >= line.product_qty else 'partial' if line.product_id.qty_available > 0 else 'unavailable',
+                'earliest_date_required': line.date_required,
+                'priority': line.priority,
+                'purchase_price': line.product_id.standard_price,
+                'subtotal': line.product_qty * line.product_id.standard_price,
+                'currency_id': line.currency_id.id,
+                'state': 'draft'
+            }) for line in self.line_ids]
+        })
+        
+        # Update session state
+        self.session_id.write({'state': 'in_progress'})
+        
+        return {'type': 'ir.actions.act_window_close'}
 

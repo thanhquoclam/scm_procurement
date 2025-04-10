@@ -1,11 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Action to select PR lines -->
+    <record id="action_select_pr_lines_wizard" model="ir.actions.act_window">
+        <field name="name">Select Lines for Consolidation</field>
+        <field name="res_model">select.pr.lines.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Form View for Select PR Lines Wizard -->
+    <record id="view_select_pr_lines_wizard_form" model="ir.ui.view">
+        <field name="name">select.pr.lines.wizard.form</field>
+        <field name="model">select.pr.lines.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Select Purchase Request Lines">
+                <sheet>
+                    <group>
+                        <field name="session_id" readonly="1"/>
+                    </group>
+                    <field name="line_ids">
+                        <tree>
+                            <field name="request_id"/>
+                            <field name="product_id"/>
+                            <field name="product_qty"/>
+                            <field name="product_uom_id"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_consolidate_selected_lines" string="Confirm" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- Tree View -->
     <record id="view_scm_consolidation_tree" model="ir.ui.view">
         <field name="name">scm.pr.consolidation.session.tree</field>
         <field name="model">scm.pr.consolidation.session</field>
         <field name="arch" type="xml">
-            <tree string="Consolidation Sessions" decoration-info="state == 'draft'" decoration-muted="state == 'cancelled'" decoration-success="state == 'done'" decoration-warning="state == 'in_progress'">
+            <tree string="Consolidation Sessions" decoration-info="state == 'draft'" decoration-muted="state == 'cancelled'" decoration-success="state == 'done'" decoration-warning="state in ['in_progress', 'selecting_lines']">
                 <field name="name"/>
                 <field name="date_from"/>
                 <field name="date_to"/>
@@ -39,15 +75,21 @@
                             class="oe_highlight"
                             invisible="state not in ['in_progress']"/>
                     
+                    <button name="action_start_inventory_validation"
+                            string="Start Inventory Validation"
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state != 'validated'"/>
+                    
                     <button name="button_validate_inventory"
                             string="Validate Inventory"
                             type="object"
-                            invisible="state not in ['validated']"/>
+                            invisible="state != 'inventory_validation'"/>
                     
                     <button name="button_inventory_approved"
                             string="Approve Inventory"
                             type="object"
-                            invisible="state not in ['inventory_validation']"/>
+                            invisible="state != 'inventory_validation'"/>
                     
                     <button name="action_create_purchase_orders"
                             string="Create POs"
@@ -62,48 +104,47 @@
                     <button name="action_cancel"
                             string="Cancel"
                             type="object"
-                            invisible="state in ['cancelled', 'done']"/>
+                            invisible="state in ['done', 'cancelled']"/>
                     
                     <button name="action_reset_to_draft"
                             string="Reset to Draft"
                             type="object"
-                            invisible="state not in ['cancelled']"/>
+                            invisible="state != 'cancelled'"/>
                     
-                    <field name="state" widget="statusbar"
-                           statusbar_visible="draft,in_progress,validated,inventory_validation,approved,po_created,done"/>
+                    <button name="%(action_select_pr_lines_wizard)d"
+                            string="Select Lines for Consolidation"
+                            type="action"
+                            class="oe_highlight"
+                            invisible="state != 'selecting_lines'"/>
+                    
+                    <field name="state" widget="statusbar" 
+                           statusbar_visible="draft,selecting_lines,in_progress,validated,inventory_validation,approved,po_created,done"/>
                 </header>
                 <sheet>
-                    <div class="oe_button_box" name="button_box">
-                        <button name="action_view_purchase_requests" type="object" class="oe_stat_button" icon="fa-list">
-                            <field name="pr_count" widget="statinfo" string="Purchase Requests"/>
-                        </button>
-                        <button name="action_view_purchase_orders" type="object" class="oe_stat_button" icon="fa-shopping-cart" invisible="not po_count">
-                            <field name="po_count" widget="statinfo" string="Purchase Orders"/>
-                        </button>
-                    </div>
                     <div class="oe_title">
-                        <h1><field name="name" readonly="1"/></h1>
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
                     </div>
                     <group>
                         <group>
-                            <field name="date_from" invisible="state not in ['draft']"/>
-                            <field name="date_to" invisible="state not in ['draft']"/>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
                             <field name="user_id"/>
-                            <field name="creation_date" readonly="1"/>
-                            <field name="company_id" groups="base.group_multi_company"/>
                             <field name="warehouse_id"/>
                         </group>
                         <group>
-                            <field name="total_amount" widget="monetary"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
-                            <field name="validation_date" readonly="1" invisible="not validation_date"/>
-                            <field name="po_creation_date" readonly="1" invisible="not po_creation_date"/>
+                            <field name="total_amount" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="pr_count" widget="statinfo" string="Purchase Requests"/>
+                            <field name="po_count" widget="statinfo" string="Purchase Orders"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Consolidated Lines" name="consolidated_lines">
-                            <field name="consolidated_line_ids" readonly="state in ['done', 'cancelled']">
-                                <tree editable="bottom">
+                            <field name="consolidated_line_ids" context="{'default_consolidation_id': active_id}">
+                                <tree>
                                     <field name="product_id"/>
                                     <field name="product_uom_id"/>
                                     <field name="total_quantity"/>
@@ -111,34 +152,21 @@
                                     <field name="quantity_to_purchase"/>
                                     <field name="inventory_status"/>
                                     <field name="earliest_date_required"/>
-                                    <field name="priority"/>
-                                    <field name="suggested_vendor_id"/>
-                                    <field name="purchase_price" widget="monetary"/>
-                                    <field name="subtotal" widget="monetary" sum="Total"/>
-                                    <field name="currency_id" invisible="1"/>
                                     <field name="state"/>
-                                    <button name="action_validate" 
-                                            string="Validate" 
-                                            type="object" 
-                                            icon="fa-check" 
-                                            invisible="state not in ['draft']"/>
-                                    <button name="action_suggest_vendors" 
-                                            string="Suggest Vendor" 
-                                            type="object" 
-                                            icon="fa-user" 
-                                            invisible="suggested_vendor_id"/>
-                                    <button name="refresh_inventory_data" 
-                                            string="Refresh Stock" 
-                                            type="object" 
-                                            icon="fa-refresh"/>
-                                    <button name="action_view_stock" 
-                                            string="View Stock" 
-                                            type="object" 
-                                            icon="fa-cubes"/>
                                 </tree>
                             </field>
                         </page>
-                        <page string="Notes">
+                        <page string="Purchase Requests" name="purchase_requests">
+                            <field name="purchase_request_ids" readonly="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="date_start"/>
+                                    <field name="requester_id"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Notes" name="notes">
                             <field name="notes"/>
                         </page>
                     </notebook>
@@ -161,6 +189,7 @@
                 <field name="name"/>
                 <field name="user_id"/>
                 <filter string="Draft" name="draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Selecting Lines" name="selecting_lines" domain="[('state', '=', 'selecting_lines')]"/>
                 <filter string="In Progress" name="in_progress" domain="[('state', '=', 'in_progress')]"/>
                 <filter string="Validated" name="validated" domain="[('state', '=', 'validated')]"/>
                 <filter string="POs Created" name="po_created" domain="[('state', '=', 'po_created')]"/>

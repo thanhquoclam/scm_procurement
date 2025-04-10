@@ -155,3 +155,91 @@ class CreateConsolidationWizard(models.TransientModel):
             'view_mode': 'form',
             'res_id': consolidation.id,
         }
+
+class SelectPRLinesWizard(models.TransientModel):
+    _name = 'select.pr.lines.wizard'
+    _description = 'Select Purchase Request Lines for Consolidation'
+
+    session_id = fields.Many2one('scm.pr.consolidation.session', string='Consolidation Session', required=True)
+    line_ids = fields.Many2many('purchase.request.line', string='Purchase Request Lines')
+
+    @api.model
+    def default_get(self, fields):
+        res = super(SelectPRLinesWizard, self).default_get(fields)
+        session = self.env['scm.pr.consolidation.session'].browse(self._context.get('active_id'))
+        if session:
+            res['session_id'] = session.id
+            # Get all lines from linked purchase requests
+            pr_lines = session.purchase_request_ids.mapped('line_ids')
+            res['line_ids'] = pr_lines.ids
+        return res
+
+    def _process_selected_lines(self):
+        """Process selected lines and create consolidated lines."""
+        self.ensure_one()
+        
+        # Group lines by product
+        product_lines = {}
+        for line in self.line_ids:
+            product_id = line.product_id.id
+            if not product_id:
+                continue
+                
+            if product_id not in product_lines:
+                product_lines[product_id] = {
+                    'product': line.product_id,
+                    'uom': line.product_uom_id,
+                    'total_qty': 0,
+                    'pr_lines': self.env['purchase.request.line'],
+                    'earliest_date': line.date_required or line.request_id.date_start,
+                }
+            
+            data = product_lines[product_id]
+            data['total_qty'] += line.product_qty
+            data['pr_lines'] |= line
+            
+            line_date = line.date_required or line.request_id.date_start
+            if line_date and (not data['earliest_date'] or line_date < data['earliest_date']):
+                data['earliest_date'] = line_date
+
+        # Create consolidated lines
+        ConsolidatedLine = self.env['scm.consolidated.pr.line'].with_context(
+            tracking_disable=True,
+            mail_notrack=True
+        )
+        
+        for product_id, data in product_lines.items():
+            # Check if consolidated line already exists
+            existing_line = self.session_id.consolidated_line_ids.filtered(
+                lambda l: l.product_id.id == product_id
+            )
+            
+            if existing_line:
+                existing_line.write({
+                    'total_quantity': data['total_qty'],
+                    'purchase_request_line_ids': [(6, 0, data['pr_lines'].ids)],
+                    'earliest_date_required': data['earliest_date'],
+                })
+            else:
+                ConsolidatedLine.create({
+                    'consolidation_id': self.session_id.id,
+                    'product_id': product_id,
+                    'product_uom_id': data['uom'].id,
+                    'total_quantity': data['total_qty'],
+                    'purchase_request_line_ids': [(6, 0, data['pr_lines'].ids)],
+                    'earliest_date_required': data['earliest_date'],
+                    'state': 'draft'
+                })
+
+    def action_consolidate_selected_lines(self):
+        self.ensure_one()
+        if not self.line_ids:
+            raise UserError(_('No lines selected for consolidation.'))
+        
+        # Process the selected lines
+        self._process_selected_lines()
+        
+        # Update session state to in_progress
+        self.session_id.write({'state': 'in_progress'})
+        
+        return {'type': 'ir.actions.act_window_close'}

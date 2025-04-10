@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Form View for Select PR Lines Wizard -->
+    <record id="view_select_pr_lines_wizard_form" model="ir.ui.view">
+        <field name="name">select.pr.lines.wizard.form</field>
+        <field name="model">select.pr.lines.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Select Purchase Request Lines">
+                <sheet>
+                    <group>
+                        <field name="session_id" readonly="1"/>
+                    </group>
+                    <field name="line_ids">
+                        <tree>
+                            <field name="request_id"/>
+                            <field name="product_id"/>
+                            <field name="product_qty"/>
+                            <field name="product_uom_id"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_consolidate_selected_lines" 
+                            string="Consolidate Selected Lines" 
+                            type="object" 
+                            class="btn-primary"/>
+                    <button string="Cancel" 
+                            class="btn-secondary" 
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo> 

@@ -14,3 +14,4 @@ access_validate_inventory_wizard_line,validate.inventory.wizard.line,scm_procure
 access_reject_inventory_wizard,reject.inventory.wizard,scm_procurement.model_reject_inventory_wizard,stock.group_stock_manager,1,1,1,1
 access_forecast_wizard,forecast.wizard,scm_procurement.model_forecast_wizard,stock.group_stock_user,1,1,1,1
 access_forecast_wizard_line,forecast.wizard.line,scm_procurement.model_forecast_wizard_line,stock.group_stock_user,1,1,1,1
+access_select_pr_lines_wizard,select.pr.lines.wizard,scm_procurement.model_select_pr_lines_wizard,stock.group_stock_user,1,1,1,1
