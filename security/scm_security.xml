@@ -29,6 +29,21 @@
             <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
         </record>
 
+        <!-- SCM Procurement User Group -->
+        <record id="group_scm_procurement_user" model="res.groups">
+            <field name="name">SCM Procurement User</field>
+            <field name="category_id" ref="base.module_category_inventory_inventory"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+
+        <!-- SCM Procurement Manager Group -->
+        <record id="group_scm_procurement_manager" model="res.groups">
+            <field name="name">SCM Procurement Manager</field>
+            <field name="category_id" ref="base.module_category_inventory_inventory"/>
+            <field name="implied_ids" eval="[(4, ref('group_scm_procurement_user'))]"/>
+            <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+        </record>
+
         <!-- Record Rules -->
         <record id="scm_consolidation_comp_rule" model="ir.rule">
             <field name="name">Consolidation multi-company rule</field>

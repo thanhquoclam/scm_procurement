@@ -38,7 +38,7 @@ class PRConsolidationSession(models.Model):
         ('in_progress', 'In Progress'),
         ('validated', 'Validated'),
         ('inventory_validation', 'Inventory Validation'),
-        ('approved', 'Approved'),
+        ('po_creation', 'PO Creation'),
         ('po_created', 'PO Created'),
         ('done', 'Done'),
         ('cancelled', 'Cancelled')
@@ -72,6 +72,12 @@ class PRConsolidationSession(models.Model):
         column1='consolidation_id',
         column2='request_id',
         string='Purchase Requests',
+        tracking=True
+    )
+    purchase_order_ids = fields.One2many(
+        'purchase.order',
+        'consolidation_id',
+        string='Purchase Orders',
         tracking=True
     )
     #purchase_suggestion_ids = fields.One2many(
@@ -405,25 +411,25 @@ class PRConsolidationSession(models.Model):
         """Move the consolidation session to PO creation state."""
         self.ensure_one()
         
-        if self.state not in ['approved', 'inventory_validation']:
+        if self.state != 'po_creation':
             raise UserError(_("Cannot move to PO creation from current state."))
             
-        # Update state and trigger PO suggestion generation
+        # Update state to PO created
         self.write({
-            'state': 'po_creation',
+            'state': 'po_created',
             'po_creation_date': fields.Datetime.now()
         })
         
-        # Trigger the PO suggestion wizard
+        # Return action to mark as done
         return {
-            'name': _('Create Purchase Orders'),
+            'name': _('Mark as Done'),
             'type': 'ir.actions.act_window',
-            'res_model': 'create.po.wizard',
+            'res_model': 'scm.pr.consolidation.session',
             'view_mode': 'form',
             'target': 'new',
             'context': {
-                'default_consolidation_id': self.id,
-                'default_warehouse_id': self.warehouse_id.id,
+                'default_id': self.id,
+                'default_state': 'done'
             }
         }
 
@@ -442,6 +448,24 @@ class PRConsolidationSession(models.Model):
         return self.write({
             'state': 'done'
         })
+
+    def action_open_po_creation_wizard(self):
+        """Open the PO creation wizard."""
+        self.ensure_one()
+        if self.state != 'po_creation':
+            raise UserError(_("Cannot open PO creation wizard from current state."))
+            
+        return {
+            'name': _('Create Purchase Orders'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'create.po.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_warehouse_id': self.warehouse_id.id,
+            }
+        }
 
     def action_cancel(self):
         """Cancel the consolidation session."""

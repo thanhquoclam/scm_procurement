@@ -173,18 +173,28 @@ class ValidateInventoryWizard(models.TransientModel):
                         email_values={'email_to': manager.email}
                     )
         else:
-            # Auto-approve if no manager approval needed
+            # First validate inventory and move to PO creation state
             self.consolidation_id.write({
                 'inventory_validated': True,
                 'inventory_validation_date': fields.Datetime.now(),
                 'inventory_validated_by': self.env.user.id,
                 'inventory_status': 'approved',
                 'pending_approval': False,
-                'state': 'approved',  # First move to approved state
+                'state': 'po_creation',  # Move directly to PO creation state
             })
             
-            # Then move to PO creation state
-            self.consolidation_id.action_move_to_po_creation()
+            # Trigger the PO creation wizard
+            return {
+                'name': _('Create Purchase Orders'),
+                'type': 'ir.actions.act_window',
+                'res_model': 'create.po.wizard',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {
+                    'default_consolidation_id': self.consolidation_id.id,
+                    'default_warehouse_id': self.consolidation_id.warehouse_id.id,
+                }
+            }
         
         # Update safety stock if requested
         if self.update_safety_stock:
@@ -235,15 +245,14 @@ class ValidateInventoryWizard(models.TransientModel):
         if 'line_ids' in fields_list and self.env.context.get('active_id'):
             consolidation = self.env['scm.pr.consolidation.session'].browse(self.env.context.get('active_id'))
             if consolidation:
-                # Get critical lines
-                critical_lines = consolidation.consolidated_line_ids.filtered(
-                    lambda l: l.inventory_status in ['stockout', 'insufficient'] 
-                    and l.product_id.type in ['product', 'consu']
+                # Get all consolidated lines
+                consolidated_lines = consolidation.consolidated_line_ids.filtered(
+                    lambda l: l.product_id.type in ['product', 'consu']
                 )
                 
                 # Create wizard line values
                 wizard_line_vals = []
-                for line in critical_lines:
+                for line in consolidated_lines:
                     wizard_line_vals.append({
                         'product_id': line.product_id.id,
                         'uom_id': line.product_uom_id.id,

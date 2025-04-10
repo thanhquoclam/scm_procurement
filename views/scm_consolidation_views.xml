@@ -96,6 +96,12 @@
                             type="object"
                             invisible="state not in ['approved']"/>
                     
+                    <button name="action_open_po_creation_wizard"
+                            string="Create Purchase Orders"
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state != 'po_creation'"/>
+                    
                     <button name="action_mark_done"
                             string="Mark as Done"
                             type="object"
@@ -162,6 +168,17 @@
                                     <field name="name"/>
                                     <field name="date_start"/>
                                     <field name="requester_id"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Purchase Orders" name="purchase_orders">
+                            <field name="purchase_order_ids" readonly="1" decoration-info="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="partner_id"/>
+                                    <field name="date_order"/>
+                                    <field name="amount_total"/>
                                     <field name="state"/>
                                 </tree>
                             </field>
