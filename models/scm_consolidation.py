@@ -333,6 +333,17 @@ class PRConsolidationSession(models.Model):
             lambda l: l.inventory_status in ['below_safety', 'below_reorder'] and l.product_id.type in ['product', 'consu']
         )
         
+        # Create wizard lines
+        wizard_line_vals = []
+        for line in lines_with_issues:
+            wizard_line_vals.append({
+                'product_id': line.product_id.id,
+                'onhand_qty': line.available_quantity,
+                'required_qty': line.total_quantity,
+                'forecast_qty': line.available_quantity,
+                'notes': line.notes or '',
+            })
+        
         # Open the validation wizard
         return {
             'name': _('Validate Inventory'),
@@ -342,8 +353,8 @@ class PRConsolidationSession(models.Model):
             'target': 'new',
             'context': {
                 'default_consolidation_id': self.id,
-                'default_line_ids': [(6, 0, lines_with_issues.ids)],
                 'default_warehouse_id': self.warehouse_id.id,
+                'default_line_ids': wizard_line_vals,
             }
         }
 
@@ -359,6 +370,17 @@ class PRConsolidationSession(models.Model):
             lambda l: l.inventory_status in ['below_safety', 'below_reorder'] and l.product_id.type in ['product', 'consu']
         )
         
+        # Create wizard lines
+        wizard_line_vals = []
+        for line in lines_with_issues:
+            wizard_line_vals.append({
+                'product_id': line.product_id.id,
+                'onhand_qty': line.available_quantity,
+                'required_qty': line.total_quantity,
+                'forecast_qty': line.available_quantity,
+                'notes': line.notes or '',
+            })
+        
         return {
             'name': _('Validate Inventory'),
             'type': 'ir.actions.act_window',
@@ -367,8 +389,8 @@ class PRConsolidationSession(models.Model):
             'target': 'new',
             'context': {
                 'default_consolidation_id': self.id,
-                'default_line_ids': [(6, 0, lines_with_issues.ids)],
                 'default_warehouse_id': self.warehouse_id.id,
+                'default_line_ids': wizard_line_vals,
             }
         }
 
@@ -378,6 +400,32 @@ class PRConsolidationSession(models.Model):
         return self.write({
             'state': 'approved'
         })
+
+    def action_move_to_po_creation(self):
+        """Move the consolidation session to PO creation state."""
+        self.ensure_one()
+        
+        if self.state not in ['approved', 'inventory_validation']:
+            raise UserError(_("Cannot move to PO creation from current state."))
+            
+        # Update state and trigger PO suggestion generation
+        self.write({
+            'state': 'po_creation',
+            'po_creation_date': fields.Datetime.now()
+        })
+        
+        # Trigger the PO suggestion wizard
+        return {
+            'name': _('Create Purchase Orders'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'create.po.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_warehouse_id': self.warehouse_id.id,
+            }
+        }
 
     def action_create_purchase_orders(self):
         """Create purchase orders from consolidated lines."""

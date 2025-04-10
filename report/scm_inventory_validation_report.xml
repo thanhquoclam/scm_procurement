@@ -72,7 +72,7 @@
                     <tbody>
                         <tr t-foreach="o.consolidated_line_ids" t-as="line">
                             <td><span t-field="line.product_id"/></td>
-                            <td class="text-right"><span t-field="line.current_stock"/></td>
+                            <td class="text-right"><span t-field="line.onhand_qty"/></td>
                             <td class="text-right"><span t-field="line.safety_stock_level"/></td>
                             <td class="text-right"><span t-field="line.reorder_point"/></td>
                             <td><span t-field="line.inventory_status"/></td>

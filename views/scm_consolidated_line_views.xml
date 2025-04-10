@@ -59,7 +59,7 @@
                         <page string="Inventory Information" name="inventory">
                             <group>
                                 <group>
-                                    <field name="current_stock"/>
+                                    <field name="onhand_qty"/>
                                     <field name="forecasted_stock"/>
                                     <field name="safety_stock_level"/>
                                     <field name="reorder_point"/>

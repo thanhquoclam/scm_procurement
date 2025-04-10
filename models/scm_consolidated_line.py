@@ -34,6 +34,11 @@ class ConsolidatedPRLine(models.Model):
     @api.model
     def _get_inventory_status_selection(self):
         return [
+            ('stockout', 'Out of Stock'),
+            ('below_safety', 'Below Safety Stock'),
+            ('below_reorder', 'Below Reorder Point'),
+            ('normal', 'Normal'),
+            ('excess', 'Excess'),
             ('sufficient', 'Sufficient'),
             ('partial', 'Partially Available'),
             ('insufficient', 'Insufficient')
@@ -172,15 +177,30 @@ class ConsolidatedPRLine(models.Model):
             else:
                 line.quantity_to_purchase = 0.0
 
-    @api.depends('available_quantity', 'total_quantity')
+    @api.depends('onhand_qty', 'safety_stock_level', 'reorder_point', 'available_quantity', 'total_quantity')
     def _compute_inventory_status(self):
+        """Determine inventory status based on stock levels"""
         for line in self:
-            if line.available_quantity >= line.total_quantity:
-                line.inventory_status = 'sufficient'
-            elif line.available_quantity > 0:
-                line.inventory_status = 'partial'
+            if line.product_id.type not in ['product', 'consu']:
+                line.inventory_status = 'normal'
+                continue
+                
+            if line.onhand_qty <= 0:
+                line.inventory_status = 'stockout'
+            elif line.onhand_qty < line.safety_stock_level:
+                line.inventory_status = 'below_safety'
+            elif line.onhand_qty < line.reorder_point:
+                line.inventory_status = 'below_reorder'
+            elif line.onhand_qty > line.reorder_point * 2:  # Simple definition of excess
+                line.inventory_status = 'excess'
             else:
-                line.inventory_status = 'insufficient'
+                # Check against requested quantity
+                if line.available_quantity >= line.total_quantity:
+                    line.inventory_status = 'sufficient'
+                elif line.available_quantity > 0:
+                    line.inventory_status = 'partial'
+                else:
+                    line.inventory_status = 'insufficient'
 
     @api.depends('product_id', 'company_id')
     def _compute_purchase_price(self):
@@ -265,18 +285,10 @@ class ConsolidatedPRLine(models.Model):
 # Phase 2: Add inventory fields to consolidated lines
     
     # Add inventory fields
-    current_stock = fields.Float('Current Stock', compute='_compute_inventory_data', store=False)
+    onhand_qty = fields.Float('On-Hand Quantity', compute='_compute_inventory_data', store=False)
     forecasted_stock = fields.Float('Forecasted Stock', compute='_compute_inventory_data', store=False)
     safety_stock_level = fields.Float('Safety Stock Level', compute='_compute_inventory_data', store=False)
     reorder_point = fields.Float('Reorder Point', compute='_compute_inventory_data', store=False)
-    
-    inventory_status = fields.Selection([
-        ('stockout', 'Out of Stock'),
-        ('below_safety', 'Below Safety Stock'),
-        ('below_reorder', 'Below Reorder Point'),
-        ('normal', 'Normal'),
-        ('excess', 'Excess')
-    ], string='Inventory Status', compute='_compute_inventory_status', store=True)
     
     days_of_stock = fields.Float('Days of Stock', compute='_compute_inventory_data', store=False)
     stock_coverage = fields.Float('Stock Coverage (Days)', compute='_compute_stock_coverage', store=True)
@@ -350,7 +362,7 @@ class ConsolidatedPRLine(models.Model):
                 line.avg_monthly_consumption = 0.0
 
             # Get current stock level
-            line.current_stock = line.product_id.with_context(
+            line.onhand_qty = line.product_id.with_context(
                 location=line.warehouse_id.lot_stock_id.id
             ).qty_available
 
@@ -364,7 +376,7 @@ class ConsolidatedPRLine(models.Model):
                     ('location_id', '=', line.warehouse_id.lot_stock_id.id)
                 ])
                 
-                line.current_stock = sum(stock_quant.mapped('quantity')) if stock_quant else 0.0
+                line.onhand_qty = sum(stock_quant.mapped('quantity')) if stock_quant else 0.0
                 
                 # Get forecasted stock
                 quant_with_forecast = stock_quant.filtered(lambda q: q.location_id.id == line.warehouse_id.lot_stock_id.id)
@@ -387,7 +399,7 @@ class ConsolidatedPRLine(models.Model):
                     
                     # Calculate days of stock if avg daily usage is available
                     if rule.avg_daily_usage > 0:
-                        line.days_of_stock = line.current_stock / rule.avg_daily_usage
+                        line.days_of_stock = line.onhand_qty / rule.avg_daily_usage
                     else:
                         line.days_of_stock = 0.0
                 else:
@@ -415,8 +427,8 @@ class ConsolidatedPRLine(models.Model):
                     # Turnover rate = (Annual Sales / Average Inventory)
                     # Estimated by extrapolating 90-day sales to annual
                     annual_estimate = total_qty * (365 / 90)
-                    if line.current_stock > 0:
-                        line.turnover_rate = annual_estimate / line.current_stock
+                    if line.onhand_qty > 0:
+                        line.turnover_rate = annual_estimate / line.onhand_qty
                     else:
                         line.turnover_rate = 0.0
                 else:
@@ -435,7 +447,7 @@ class ConsolidatedPRLine(models.Model):
                 line.expected_receipt_date = incoming_move.date.date() if incoming_move else False
             else:
                 # Not a stockable product or no warehouse defined
-                line.current_stock = 0.0
+                line.onhand_qty = 0.0
                 line.forecasted_stock = 0.0
                 line.safety_stock_level = 0.0
                 line.reorder_point = 0.0
@@ -444,26 +456,7 @@ class ConsolidatedPRLine(models.Model):
                 line.turnover_rate = 0.0
                 line.expected_receipt_date = False
     
-    @api.depends('current_stock', 'safety_stock_level', 'reorder_point')
-    def _compute_inventory_status(self):
-        """Determine inventory status based on stock levels"""
-        for line in self:
-            if line.product_id.type not in ['product', 'consu']:
-                line.inventory_status = 'normal'
-                continue
-                
-            if line.current_stock <= 0:
-                line.inventory_status = 'stockout'
-            elif line.current_stock < line.safety_stock_level:
-                line.inventory_status = 'below_safety'
-            elif line.current_stock < line.reorder_point:
-                line.inventory_status = 'below_reorder'
-            elif line.current_stock > line.reorder_point * 2:  # Simple definition of excess
-                line.inventory_status = 'excess'
-            else:
-                line.inventory_status = 'normal'
-    
-    @api.depends('quantity', 'current_stock', 'days_of_stock', 'lead_time')
+    @api.depends('quantity', 'onhand_qty', 'days_of_stock', 'lead_time')
     def _compute_stock_coverage(self):
         """Calculate stock coverage based on consolidation quantity"""
         for line in self:
@@ -494,13 +487,13 @@ class ConsolidatedPRLine(models.Model):
                     daily_usage = max(daily_usage, adjusted_daily)
                 
                 if daily_usage > 0:
-                    line.stock_coverage = line.current_stock / daily_usage
+                    line.stock_coverage = line.onhand_qty / daily_usage
                 else:
                     line.stock_coverage = 0.0
             else:
                 line.stock_coverage = 0.0
     
-    @api.depends('inventory_status', 'expected_receipt_date', 'lead_time', 'current_stock', 'quantity')
+    @api.depends('inventory_status', 'expected_receipt_date', 'lead_time', 'onhand_qty', 'quantity')
     def _compute_procurement_recommendation(self):
         """Determine procurement recommendation based on inventory status"""
         for line in self:
@@ -757,8 +750,8 @@ class ConsolidatedPRLine(models.Model):
             line.avg_monthly_usage = total_usage / 3 if total_usage else 0.0
 
             # Calculate turnover rate
-            if line.avg_monthly_usage and line.current_stock:
-                line.turnover_rate = (line.avg_monthly_usage * 12) / line.current_stock
+            if line.avg_monthly_usage and line.onhand_qty:
+                line.turnover_rate = (line.avg_monthly_usage * 12) / line.onhand_qty
             else:
                 line.turnover_rate = 0.0
 
