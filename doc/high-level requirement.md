@@ -43,6 +43,15 @@ Description:
 4.	Review Shortages/Surpluses: User reviews the system's assessment of inventory status.
 5.	Manual Overrides: User can override system decisions if needed (e.g., reserving stock for other purposes).
 6.	Confirm Purchase Needs: User confirms the final list of products that need to be purchased.
+
+**Implementation Status (April 2025):**
+- The inventory validation process has been implemented with the `validate.inventory.wizard`.
+- The wizard displays all consolidated lines with their current stock, required quantity, and available quantity.
+- Users can filter to view only critical items (those with inventory status 'stockout' or 'insufficient').
+- The system calculates the quantity to purchase based on the difference between required quantity and available quantity.
+- After validation, users can proceed to PO creation.
+- The consolidation session workflow has been updated to include the inventory validation state.
+- Purchase orders created from the consolidation are linked to the session and visible in a dedicated tab.
 PO Creation Process
 flowchart TD
     A[Start] --> B[View Purchase Suggestions]
