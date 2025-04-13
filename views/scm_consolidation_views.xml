@@ -61,7 +61,7 @@
         <field name="name">scm.pr.consolidation.session.form</field>
         <field name="model">scm.pr.consolidation.session</field>
         <field name="arch" type="xml">
-            <form>
+            <form string="Consolidation Session" edit="true" create="true">
                 <header>
                     <button name="action_start_consolidation" 
                             string="Start Consolidation" 
@@ -127,6 +127,20 @@
                            statusbar_visible="draft,selecting_lines,in_progress,validated,inventory_validation,approved,po_created,done"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_purchase_requests" 
+                                class="oe_stat_button" 
+                                type="object" 
+                                icon="fa-list">
+                            <field name="pr_count" widget="statinfo" string="Purchase Requests"/>
+                        </button>
+                        <button name="action_view_purchase_orders" 
+                                class="oe_stat_button" 
+                                type="object" 
+                                icon="fa-shopping-cart">
+                            <field name="po_count" widget="statinfo" string="Purchase Orders"/>
+                        </button>
+                    </div>
                     <div class="oe_title">
                         <h1>
                             <field name="name" readonly="1"/>
@@ -143,8 +157,6 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="total_amount" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                            <field name="pr_count" widget="statinfo" string="Purchase Requests"/>
-                            <field name="po_count" widget="statinfo" string="Purchase Orders"/>
                         </group>
                     </group>
                     <notebook>

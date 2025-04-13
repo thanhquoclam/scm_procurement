@@ -3,7 +3,10 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 from dateutil.relativedelta import relativedelta
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class ConsolidatedPRLine(models.Model):
@@ -158,13 +161,116 @@ class ConsolidatedPRLine(models.Model):
          'A product can only appear once in a consolidation session!')
     ]
 
-    @api.depends('product_id')
+    requisition_id = fields.Many2one(
+        'purchase.requisition',
+        string='Purchase Agreement',
+        tracking=True,
+        domain=[('state', 'in', ['in_progress', 'open'])]
+    )
+    requisition_line_id = fields.Many2one(
+        'purchase.requisition.line',
+        string='Purchase Agreement Line',
+        tracking=True,
+        domain="[('requisition_id', '=', requisition_id)]"
+    )
+
+    @api.depends('product_id', 'warehouse_id', 'quantity', 'purchase_request_line_ids.product_qty')
+    def _compute_inventory_data(self):
+        """Compute current inventory levels and related data"""
+        for line in self:
+            # Initialize all computed fields to 0 or False
+            line.onhand_qty = 0.0
+            line.forecasted_stock = 0.0
+            line.safety_stock_level = 0.0
+            line.reorder_point = 0.0
+            line.days_of_stock = 0.0
+            line.lead_time = 0
+            line.turnover_rate = 0.0
+            line.expected_receipt_date = False
+            line.avg_monthly_consumption = 0.0
+
+            if not line.product_id or not line.warehouse_id or not line.id:
+                continue
+
+            if line.product_id.type not in ['product', 'consu']:
+                continue
+
+            # Get current stock level with proper location context
+            if line.warehouse_id and line.warehouse_id.lot_stock_id:
+                stock_location = line.warehouse_id.lot_stock_id
+                current_stock = line.product_id.with_context(
+                    location=stock_location.id
+                ).qty_available
+                
+                line.onhand_qty = current_stock
+                
+                # Get forecasted stock
+                stock_quant = self.env['stock.quant'].search([
+                    ('product_id', '=', line.product_id.id),
+                    ('location_id', '=', stock_location.id)
+                ])
+                
+                if stock_quant:
+                    for quant in stock_quant:
+                        quant._compute_forecasted_qty()
+                    line.forecasted_stock = sum(stock_quant.mapped('forecasted_qty'))
+                
+                # Get inventory rule data
+                rule = self.env['scm.inventory.rule'].get_applicable_rule(line.product_id, line.warehouse_id)
+                
+                if rule:
+                    line.safety_stock_level = rule.safety_stock_qty
+                    line.reorder_point = rule.reorder_point
+                    line.lead_time = rule.lead_time_days
+                    
+                    # Calculate days of stock if avg daily usage is available
+                    if rule.average_monthly_usage > 0:
+                        line.days_of_stock = line.onhand_qty / (rule.average_monthly_usage / 30)
+                
+                # Calculate turnover rate using last 90 days data
+                date_from = fields.Date.today() - relativedelta(days=90)
+                moves = self.env['stock.move'].search([
+                    ('product_id', '=', line.product_id.id),
+                    ('location_dest_id.usage', 'in', ['customer', 'production']),
+                    ('location_id.warehouse_id', '=', line.warehouse_id.id),
+                    ('state', '=', 'done'),
+                    ('date', '>=', date_from)
+                ])
+                
+                if moves and line.onhand_qty > 0:
+                    total_qty = sum(move.product_uom_qty for move in moves)
+                    annual_estimate = total_qty * (365 / 90)
+                    line.turnover_rate = annual_estimate / line.onhand_qty
+                
+                # Expected receipt date - get first scheduled incoming shipment
+                incoming_domain = [
+                    ('product_id', '=', line.product_id.id),
+                    ('location_dest_id.warehouse_id', '=', line.warehouse_id.id),
+                    ('location_dest_id.usage', '=', 'internal'),
+                    ('state', 'in', ['assigned', 'partially_available']),
+                    ('date', '>=', fields.Datetime.now())
+                ]
+                
+                incoming_move = self.env['stock.move'].search(incoming_domain, order='date', limit=1)
+                line.expected_receipt_date = incoming_move.date.date() if incoming_move else False
+            else:
+                # Not a stockable product or no warehouse defined
+                line.onhand_qty = 0.0
+                line.forecasted_stock = 0.0
+                line.safety_stock_level = 0.0
+                line.reorder_point = 0.0
+                line.days_of_stock = 0.0
+                line.lead_time = 0
+                line.turnover_rate = 0.0
+                line.expected_receipt_date = False
+
+    @api.depends('product_id', 'warehouse_id')
     def _compute_available_quantity(self):
         for line in self:
-            if line.product_id:
-                # More efficient stock calculation
+            if line.product_id and line.warehouse_id and line.warehouse_id.lot_stock_id:
+                # Get stock with proper location context
                 line.available_quantity = line.product_id.with_context(
-                    location=self.env['stock.location'].search([('usage', '=', 'internal')]).ids
+                    location=line.warehouse_id.lot_stock_id.id
                 ).qty_available
             else:
                 line.available_quantity = 0.0
@@ -232,8 +338,131 @@ class ConsolidatedPRLine(models.Model):
 
     def action_validate(self):
         self.ensure_one()
-        self.write({'state': 'validated'})
-        return True
+        _logger.info(f"Starting validation for consolidated line {self.id}")
+        
+        # Create wizard
+        wizard = self.env['validate.inventory.wizard'].create({
+            'session_id': self.consolidation_id.id,
+        })
+        
+        # Create wizard lines
+        for line in self.consolidation_id.consolidated_line_ids:
+            _logger.info(f"Creating wizard line for product {line.product_id.name}")
+            
+            # Calculate incoming and outgoing quantities
+            incoming_qty = 0.0
+            outgoing_qty = 0.0
+            
+            if line.product_id and line.warehouse_id and line.warehouse_id.lot_stock_id:
+                stock_location = line.warehouse_id.lot_stock_id
+                
+                # Calculate incoming quantity (moves to the stock location)
+                incoming_moves = self.env['stock.move'].search([
+                    ('product_id', '=', line.product_id.id),
+                    ('location_dest_id', '=', stock_location.id),
+                    ('state', 'in', ['draft', 'waiting', 'confirmed', 'assigned'])
+                ])
+                incoming_qty = sum(incoming_moves.mapped('product_uom_qty'))
+                
+                # Calculate outgoing quantity (moves from the stock location)
+                outgoing_moves = self.env['stock.move'].search([
+                    ('product_id', '=', line.product_id.id),
+                    ('location_id', '=', stock_location.id),
+                    ('state', 'in', ['draft', 'waiting', 'confirmed', 'assigned'])
+                ])
+                outgoing_qty = sum(outgoing_moves.mapped('product_uom_qty'))
+            
+            self.env['validate.inventory.wizard.line'].create({
+                'wizard_id': wizard.id,
+                'product_id': line.product_id.id,
+                'product_uom_id': line.product_uom_id.id,
+                'available_qty': line.onhand_qty,
+                'incoming_qty': incoming_qty,
+                'outgoing_qty': outgoing_qty,
+                'safety_stock_qty': line.safety_stock_level,
+                'reorder_point': line.reorder_point,
+                'required_quantity': line.quantity_to_purchase,
+                'inventory_status': line.inventory_status,
+            })
+        
+        _logger.info("Wizard created successfully")
+        
+        # Return action to open wizard
+        return {
+            'name': _('Validate Inventory'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'validate.inventory.wizard',
+            'view_mode': 'form',
+            'res_id': wizard.id,
+            'target': 'new',
+            'context': {'default_session_id': self.consolidation_id.id}
+        }
+
+    def _update_inventory_data(self):
+        """Update inventory data for the consolidated line"""
+        self.ensure_one()
+        
+        if not self.product_id or self.product_id.type not in ['product', 'consu']:
+            return
+            
+        # Get the warehouse
+        warehouse = self.warehouse_id or self.consolidation_id.warehouse_id
+        if not warehouse:
+            return
+            
+        # Get the stock location
+        stock_location = warehouse.lot_stock_id
+        if not stock_location:
+            return
+            
+        # Get current stock (actual on-hand quantity)
+        current_stock = self.product_id.with_context(
+            location=stock_location.id
+        ).qty_available
+        
+        # Get inventory rule parameters
+        rule = self.env['scm.inventory.rule'].get_applicable_rule(
+            self.product_id, 
+            warehouse
+        )
+        
+        # Calculate incoming quantity (moves to the stock location)
+        incoming_moves = self.env['stock.move'].search([
+            ('product_id', '=', self.product_id.id),
+            ('location_dest_id', '=', stock_location.id),
+            ('state', 'in', ['draft', 'waiting', 'confirmed', 'assigned'])
+        ])
+        incoming_qty = sum(incoming_moves.mapped('product_uom_qty'))
+        
+        # Calculate outgoing quantity (moves from the stock location)
+        outgoing_moves = self.env['stock.move'].search([
+            ('product_id', '=', self.product_id.id),
+            ('location_id', '=', stock_location.id),
+            ('state', 'in', ['draft', 'waiting', 'confirmed', 'assigned'])
+        ])
+        outgoing_qty = sum(outgoing_moves.mapped('product_uom_qty'))
+        
+        # Update fields
+        self.write({
+            'onhand_qty': current_stock,
+            'available_quantity': current_stock + incoming_qty - outgoing_qty,
+            'safety_stock_level': rule.safety_stock_qty if rule else 0.0,
+            'reorder_point': rule.reorder_point if rule else 0.0,
+            'lead_time': rule.lead_time_days if rule else 0,
+            'avg_monthly_usage': rule.average_monthly_usage if rule else 0.0,
+        })
+        
+        # Calculate days of stock
+        if self.avg_monthly_usage > 0:
+            self.days_of_stock = (self.available_quantity / (self.avg_monthly_usage / 30))
+        else:
+            self.days_of_stock = 0
+            
+        # Calculate expected receipt date
+        if self.lead_time > 0:
+            self.expected_receipt_date = fields.Date.today() + timedelta(days=self.lead_time)
+        else:
+            self.expected_receipt_date = False
 
     def action_view_stock(self):
         self.ensure_one()
@@ -279,7 +508,18 @@ class ConsolidatedPRLine(models.Model):
         return True
 
     def refresh_inventory_data(self):
+        """Refresh all inventory-related data for the consolidated line"""
+        self.ensure_one()
+        
+        # Update inventory data
+        self._compute_inventory_data()
         self._compute_available_quantity()
+        self._compute_quantity_to_purchase()
+        self._compute_inventory_status()
+        self._compute_stock_coverage()
+        self._compute_procurement_recommendation()
+        self._compute_procurement_history()
+        
         return True
 
 # Phase 2: Add inventory fields to consolidated lines
@@ -329,133 +569,6 @@ class ConsolidatedPRLine(models.Model):
         for line in self:
             line.quantity = sum(line.purchase_request_line_ids.mapped('product_qty'))
 
-    @api.depends('product_id', 'warehouse_id', 'quantity')
-    def _compute_inventory_data(self):
-        """Compute current inventory levels and related data"""
-        for line in self:
-            if not line.product_id:
-                continue
-
-            # Calculate date range for stock moves using relativedelta
-            date_from = fields.Date.today() - relativedelta(days=90)
-            date_to = fields.Date.today()
-
-            # Get stock moves for consumption calculation
-            domain = [
-                ('product_id', '=', line.product_id.id),
-                ('state', '=', 'done'),
-                ('date', '>=', date_from),
-                ('date', '<=', date_to),
-            ]
-
-            # Get outgoing moves (consumption)
-            outgoing_moves = self.env['stock.move'].search(domain + [
-                ('location_dest_id.usage', '=', 'customer')
-            ])
-
-            # Calculate average monthly consumption
-            if outgoing_moves:
-                total_qty = sum(move.product_uom_qty for move in outgoing_moves)
-                months = 3.0  # 90 days = 3 months
-                line.avg_monthly_consumption = total_qty / months
-            else:
-                line.avg_monthly_consumption = 0.0
-
-            # Get current stock level
-            line.onhand_qty = line.product_id.with_context(
-                location=line.warehouse_id.lot_stock_id.id
-            ).qty_available
-
-            # Update inventory status
-            line._compute_inventory_status()
-
-            if line.product_id and line.product_id.type in ['product', 'consu'] and line.warehouse_id:
-                # Get current stock
-                stock_quant = self.env['stock.quant'].search([
-                    ('product_id', '=', line.product_id.id),
-                    ('location_id', '=', line.warehouse_id.lot_stock_id.id)
-                ])
-                
-                line.onhand_qty = sum(stock_quant.mapped('quantity')) if stock_quant else 0.0
-                
-                # Get forecasted stock
-                quant_with_forecast = stock_quant.filtered(lambda q: q.location_id.id == line.warehouse_id.lot_stock_id.id)
-                
-                # Use the forecasted_qty logic from the extended stock_quant
-                if quant_with_forecast:
-                    for quant in quant_with_forecast:
-                        quant._compute_forecasted_qty()
-                    line.forecasted_stock = sum(quant_with_forecast.mapped('forecasted_qty'))
-                else:
-                    line.forecasted_stock = 0.0
-                
-                # Get inventory rule data
-                rule = self.env['scm.inventory.rule'].get_applicable_rule(line.product_id, line.warehouse_id)
-                
-                if rule:
-                    line.safety_stock_level = rule.safety_stock_qty
-                    line.reorder_point = rule.reorder_point
-                    line.lead_time = rule.lead_time
-                    
-                    # Calculate days of stock if avg daily usage is available
-                    if rule.avg_daily_usage > 0:
-                        line.days_of_stock = line.onhand_qty / rule.avg_daily_usage
-                    else:
-                        line.days_of_stock = 0.0
-                else:
-                    line.safety_stock_level = 0.0
-                    line.reorder_point = 0.0
-                    line.lead_time = 0
-                    line.days_of_stock = 0.0
-                
-                # Calculate turnover rate (if possible) using last 90 days data
-                date_from = fields.Date.today() - relativedelta(days=90)  # Fixed usage
-                domain = [
-                    ('product_id', '=', line.product_id.id),
-                    ('state', '=', 'done'),
-                    ('date', '>=', date_from)
-                ]
-                
-                # Get outgoing moves (to customers or production)
-                moves = self.env['stock.move'].search(domain + [
-                    ('location_dest_id.usage', 'in', ['customer', 'production']),
-                    ('location_id.warehouse_id', '=', line.warehouse_id.id)
-                ])
-                
-                if moves:
-                    total_qty = sum(move.product_qty for move in moves)
-                    # Turnover rate = (Annual Sales / Average Inventory)
-                    # Estimated by extrapolating 90-day sales to annual
-                    annual_estimate = total_qty * (365 / 90)
-                    if line.onhand_qty > 0:
-                        line.turnover_rate = annual_estimate / line.onhand_qty
-                    else:
-                        line.turnover_rate = 0.0
-                else:
-                    line.turnover_rate = 0.0
-                
-                # Expected receipt date - get first scheduled incoming shipment
-                incoming_domain = [
-                    ('product_id', '=', line.product_id.id),
-                    ('location_dest_id.warehouse_id', '=', line.warehouse_id.id),
-                    ('location_dest_id.usage', '=', 'internal'),
-                    ('state', 'in', ['assigned', 'partially_available']),
-                    ('date', '>=', fields.Datetime.now())
-                ]
-                
-                incoming_move = self.env['stock.move'].search(incoming_domain, order='date', limit=1)
-                line.expected_receipt_date = incoming_move.date.date() if incoming_move else False
-            else:
-                # Not a stockable product or no warehouse defined
-                line.onhand_qty = 0.0
-                line.forecasted_stock = 0.0
-                line.safety_stock_level = 0.0
-                line.reorder_point = 0.0
-                line.days_of_stock = 0.0
-                line.lead_time = 0
-                line.turnover_rate = 0.0
-                line.expected_receipt_date = False
-    
     @api.depends('quantity', 'onhand_qty', 'days_of_stock', 'lead_time')
     def _compute_stock_coverage(self):
         """Calculate stock coverage based on consolidation quantity"""
@@ -472,16 +585,10 @@ class ConsolidatedPRLine(models.Model):
                 daily_usage = rule.avg_daily_usage
                 
                 # Adjust for consolidated line quantity if it represents usage
-                if line.quantity > 0 and line.uom_id == line.product_id.uom_id:
-                    # If the line represents a periodic order, adjust daily usage
-                    if line.consolidation_id.frequency == 'weekly':
-                        adjusted_daily = line.quantity / 7.0
-                    elif line.consolidation_id.frequency == 'monthly':
-                        adjusted_daily = line.quantity / 30.0
-                    elif line.consolidation_id.frequency == 'quarterly':
-                        adjusted_daily = line.quantity / 90.0
-                    else:  # Daily or undefined
-                        adjusted_daily = line.quantity
+                if line.quantity > 0 and line.product_uom_id == line.product_id.uom_id:
+                    # Calculate daily usage based on the consolidated quantity
+                    # Assume monthly frequency as default (30 days)
+                    adjusted_daily = line.quantity / 30.0
                     
                     # Use max between historical and current request
                     daily_usage = max(daily_usage, adjusted_daily)
@@ -763,3 +870,72 @@ class ConsolidatedPRLine(models.Model):
         digits='Product Unit of Measure',
         help="Average monthly consumption based on last 3 months"
     )
+
+    @api.model
+    def default_get(self, fields_list):
+        """Set default values for new records"""
+        res = super().default_get(fields_list)
+        
+        # Get context values
+        product_id = self.env.context.get('default_product_id')
+        consolidation_id = self.env.context.get('default_consolidation_id')
+        
+        if product_id:
+            product = self.env['product.product'].browse(product_id)
+            if product.exists():
+                # Set both UoM fields to ensure consistency
+                res['product_uom_id'] = product.uom_id.id
+                res['uom_id'] = product.uom_id.id
+                
+                # Set other defaults
+                res['product_id'] = product.id
+                res['company_id'] = product.company_id.id
+                
+                # Get inventory rule if exists
+                rule = self.env['scm.inventory.rule'].get_applicable_rule(product)
+                if rule:
+                    res['safety_stock_level'] = rule.safety_stock_qty
+                    res['reorder_point'] = rule.reorder_point
+                    res['lead_time'] = rule.lead_time
+                    res['days_of_stock'] = rule.days_of_stock
+                    res['turnover_rate'] = rule.turnover_rate
+                
+                # Set earliest date required to today
+                res['earliest_date_required'] = fields.Date.today()
+                
+                # Set priority based on inventory status
+                if product.qty_available <= 0:
+                    res['priority'] = 'critical'
+                elif product.qty_available < (rule.safety_stock_qty if rule else 0):
+                    res['priority'] = 'high'
+                else:
+                    res['priority'] = 'normal'
+        
+        if consolidation_id:
+            res['consolidation_id'] = consolidation_id
+            
+        return res
+
+    def unlink(self):
+        """Override unlink to clean up purchase requests when a consolidated line is removed."""
+        # Store consolidation_id before deletion
+        consolidation_ids = self.mapped('consolidation_id')
+        
+        # Call the parent unlink method to perform the actual deletion
+        result = super(ConsolidatedPRLine, self).unlink()
+        
+        # After deletion, check each consolidation session
+        for consolidation in consolidation_ids:
+            # Get all purchase request IDs from remaining lines
+            remaining_pr_ids = consolidation.consolidated_line_ids.mapped('purchase_request_line_ids.request_id').ids
+            
+            # Update the consolidation session to only include purchase requests with remaining lines
+            consolidation.write({
+                'purchase_request_ids': [(6, 0, remaining_pr_ids)]
+            })
+            
+            # If no lines remain, reset the state to draft
+            if not consolidation.consolidated_line_ids:
+                consolidation.write({'state': 'draft'})
+        
+        return result

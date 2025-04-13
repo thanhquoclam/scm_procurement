@@ -2,6 +2,7 @@
 
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
+from dateutil.relativedelta import relativedelta
 
 
 class ScmInventoryRule(models.Model):
@@ -52,7 +53,7 @@ class ScmInventoryRule(models.Model):
         for rule in self:
             if rule.product_id:
                 # Calculate the average daily usage based on the last 90 days of stock moves
-                date_from = fields.Date.today() - fields.Relativedelta(days=90)
+                date_from = fields.Date.today() - relativedelta(days=90)
                 domain = [
                     ('product_id', '=', rule.product_id.id),
                     ('state', '=', 'done'),

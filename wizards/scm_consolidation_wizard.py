@@ -3,6 +3,9 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 from datetime import datetime, timedelta
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class CreateConsolidationWizard(models.TransientModel):
@@ -10,144 +13,176 @@ class CreateConsolidationWizard(models.TransientModel):
     _description = 'Create Consolidation Session Wizard'
 
     name = fields.Char(
-        string='Session Name',
+        string='Name',
         required=True,
-        default=lambda self: _('Consolidation %s') % fields.Date.today()
+        default=lambda self: _('New Consolidation Session')
     )
     date_from = fields.Date(
-        string='Start Date',
+        string='Date From',
         required=True,
-        default=lambda self: fields.Date.today() - timedelta(days=30)
+        default=fields.Date.context_today
     )
     date_to = fields.Date(
-        string='End Date',
+        string='Date To',
         required=True,
-        default=fields.Date.today()
+        default=fields.Date.context_today
     )
-    department_ids = fields.Many2many(
-        'hr.department',
-        string='Departments',
-        help='Filter PRs by these departments. Leave empty to include all departments.'
-    )
-    category_ids = fields.Many2many(
-        'product.category',
-        string='Product Categories',
-        help='Filter PRs by these product categories. Leave empty to include all categories.'
+    warehouse_id = fields.Many2one(
+        'stock.warehouse',
+        string='Warehouse',
+        required=True
     )
     user_id = fields.Many2one(
         'res.users',
         string='Responsible',
         default=lambda self: self.env.user
     )
-    notes = fields.Text(string='Notes')
     company_id = fields.Many2one(
         'res.company',
         string='Company',
         default=lambda self: self.env.company
     )
-    auto_start = fields.Boolean(
-        string='Auto Start Consolidation',
-        default=True,
-        help='Automatically start the consolidation process after creation'
-    )
     pr_count = fields.Integer(
-        string='Eligible Purchase Requests',
+        string='Purchase Request Count',
         compute='_compute_pr_count'
     )
+    auto_start = fields.Boolean(
+        string='Auto Start',
+        default=False,
+        help='Automatically start the consolidation process after creation'
+    )
+    department_ids = fields.Many2many(
+        'hr.department',
+        string='Departments',
+        help='Filter purchase requests by departments'
+    )
+    category_ids = fields.Many2many(
+        'product.category',
+        string='Product Categories',
+        help='Filter purchase requests by product categories'
+    )
+    notes = fields.Text(
+        string='Notes',
+        help='Additional notes for the consolidation session'
+    )
 
-    @api.depends('date_from', 'date_to', 'department_ids', 'category_ids')
+    @api.depends('date_from', 'date_to', 'warehouse_id', 'department_ids', 'category_ids')
     def _compute_pr_count(self):
         for wizard in self:
             domain = [
                 ('state', '=', 'approved'),
-                ('date_start', '>=', wizard.date_from),
-                ('date_start', '<=', wizard.date_to)
+                ('date_required', '>=', wizard.date_from),
+                ('date_required', '<=', wizard.date_to),
             ]
             
+            # Add warehouse filter if specified
+            if wizard.warehouse_id:
+                domain.append(('warehouse_id', '=', wizard.warehouse_id.id))
+                
+            # Add department filter if specified
             if wizard.department_ids:
                 domain.append(('department_id', 'in', wizard.department_ids.ids))
-            
-            purchase_requests = self.env['purchase.request'].search(domain)
-            
-            # If category filter is applied, we need to check PR lines
+                
+            # Add category filter if specified
             if wizard.category_ids:
-                category_prs = self.env['purchase.request']
-                for pr in purchase_requests:
-                    for line in pr.line_ids:
-                        if line.product_id and line.product_id.categ_id.id in wizard.category_ids.ids:
-                            category_prs |= pr
-                            break
-                purchase_requests = category_prs
-            
-            wizard.pr_count = len(purchase_requests)
-
-    @api.constrains('date_from', 'date_to')
-    def _check_dates(self):
-        for wizard in self:
-            if wizard.date_from > wizard.date_to:
-                raise UserError(_("End date cannot be earlier than start date."))
+                domain.append(('product_id.categ_id', 'in', wizard.category_ids.ids))
+                
+            # Count eligible purchase requests
+            wizard.pr_count = self.env['purchase.request'].search_count(domain)
 
     def action_preview_prs(self):
         self.ensure_one()
+        
+        # Build domain for eligible purchase requests
         domain = [
             ('state', '=', 'approved'),
-            ('date_start', '>=', self.date_from),
-            ('date_start', '<=', self.date_to)
+            ('date_required', '>=', self.date_from),
+            ('date_required', '<=', self.date_to),
         ]
         
+        # Add warehouse filter if specified
+        if self.warehouse_id:
+            domain.append(('warehouse_id', '=', self.warehouse_id.id))
+            
+        # Add department filter if specified
         if self.department_ids:
             domain.append(('department_id', 'in', self.department_ids.ids))
+            
+        # Add category filter if specified
+        if self.category_ids:
+            domain.append(('product_id.categ_id', 'in', self.category_ids.ids))
+            
+        # Get eligible purchase requests
+        purchase_requests = self.env['purchase.request'].search(domain)
         
-        # Fix for the PR preview with category filter
-        action = {
+        # Return action to view the purchase requests
+        return {
             'name': _('Eligible Purchase Requests'),
             'type': 'ir.actions.act_window',
             'res_model': 'purchase.request',
             'view_mode': 'tree,form',
-            'domain': domain,
+            'domain': [('id', 'in', purchase_requests.ids)],
+            'context': {'create': False}
         }
-        
-        # If category filter is applied, we need to handle it differently
-        if self.category_ids:
-            # We'll need to retrieve the PRs manually and pass their IDs
-            purchase_requests = self.env['purchase.request'].search(domain)
-            category_pr_ids = []
-            
-            for pr in purchase_requests:
-                for line in pr.line_ids:
-                    if line.product_id and line.product_id.categ_id.id in self.category_ids.ids:
-                        category_pr_ids.append(pr.id)
-                        break
-            
-            action['domain'] = [('id', 'in', category_pr_ids)]
-        
-        return action
+
+    @api.model
+    def default_get(self, fields_list):
+        res = super(CreateConsolidationWizard, self).default_get(fields_list)
+        if 'warehouse_id' in fields_list and not res.get('warehouse_id'):
+            # Get default warehouse from user's settings
+            default_warehouse = self.env['stock.warehouse'].search([], limit=1)
+            if default_warehouse:
+                res['warehouse_id'] = default_warehouse.id
+        return res
 
     def action_create_consolidation(self):
         self.ensure_one()
         
-        if self.pr_count == 0:
-            raise UserError(_("No eligible Purchase Requests found for the selected criteria."))
-            
-        values = {
+        # Create consolidation session
+        consolidation = self.env['scm.pr.consolidation.session'].create({
             'name': self.name,
             'date_from': self.date_from,
             'date_to': self.date_to,
-            'department_ids': [(6, 0, self.department_ids.ids)],
-            'category_ids': [(6, 0, self.category_ids.ids)],
+            'warehouse_id': self.warehouse_id.id,
             'user_id': self.user_id.id,
-            'notes': self.notes,
             'company_id': self.company_id.id,
-            'state': 'draft'
-        }
+            'state': 'draft',
+            'notes': self.notes
+        })
         
-        consolidation = self.env['scm.pr.consolidation.session'].create(values)
+        # If auto_start is enabled, automatically start the consolidation process
+        if self.auto_start and self.pr_count > 0:
+            # Get eligible purchase requests
+            domain = [
+                ('state', '=', 'approved'),
+                ('date_required', '>=', self.date_from),
+                ('date_required', '<=', self.date_to),
+            ]
+            
+            # Add warehouse filter if specified
+            if self.warehouse_id:
+                domain.append(('warehouse_id', '=', self.warehouse_id.id))
+                
+            # Add department filter if specified
+            if self.department_ids:
+                domain.append(('department_id', 'in', self.department_ids.ids))
+                
+            # Add category filter if specified
+            if self.category_ids:
+                domain.append(('product_id.categ_id', 'in', self.category_ids.ids))
+                
+            # Get eligible purchase requests
+            purchase_requests = self.env['purchase.request'].search(domain)
+            
+            # Add purchase requests to the consolidation session
+            consolidation.write({
+                'purchase_request_ids': [(6, 0, purchase_requests.ids)]
+            })
+            
+            # Start the consolidation process
+            consolidation.action_start()
         
-        # If auto_start is checked, automatically start the consolidation
-        if self.auto_start:
-            consolidation.action_start_consolidation()
-        
-        # Open the created consolidation
+        # Return action to open the created consolidation
         return {
             'name': _('Consolidation Session'),
             'type': 'ir.actions.act_window',
@@ -156,90 +191,4 @@ class CreateConsolidationWizard(models.TransientModel):
             'res_id': consolidation.id,
         }
 
-class SelectPRLinesWizard(models.TransientModel):
-    _name = 'select.pr.lines.wizard'
-    _description = 'Select Purchase Request Lines for Consolidation'
-
-    session_id = fields.Many2one('scm.pr.consolidation.session', string='Consolidation Session', required=True)
-    line_ids = fields.Many2many('purchase.request.line', string='Purchase Request Lines')
-
-    @api.model
-    def default_get(self, fields):
-        res = super(SelectPRLinesWizard, self).default_get(fields)
-        session = self.env['scm.pr.consolidation.session'].browse(self._context.get('active_id'))
-        if session:
-            res['session_id'] = session.id
-            # Get all lines from linked purchase requests
-            pr_lines = session.purchase_request_ids.mapped('line_ids')
-            res['line_ids'] = pr_lines.ids
-        return res
-
-    def _process_selected_lines(self):
-        """Process selected lines and create consolidated lines."""
-        self.ensure_one()
-        
-        # Group lines by product
-        product_lines = {}
-        for line in self.line_ids:
-            product_id = line.product_id.id
-            if not product_id:
-                continue
-                
-            if product_id not in product_lines:
-                product_lines[product_id] = {
-                    'product': line.product_id,
-                    'uom': line.product_uom_id,
-                    'total_qty': 0,
-                    'pr_lines': self.env['purchase.request.line'],
-                    'earliest_date': line.date_required or line.request_id.date_start,
-                }
-            
-            data = product_lines[product_id]
-            data['total_qty'] += line.product_qty
-            data['pr_lines'] |= line
-            
-            line_date = line.date_required or line.request_id.date_start
-            if line_date and (not data['earliest_date'] or line_date < data['earliest_date']):
-                data['earliest_date'] = line_date
-
-        # Create consolidated lines
-        ConsolidatedLine = self.env['scm.consolidated.pr.line'].with_context(
-            tracking_disable=True,
-            mail_notrack=True
-        )
-        
-        for product_id, data in product_lines.items():
-            # Check if consolidated line already exists
-            existing_line = self.session_id.consolidated_line_ids.filtered(
-                lambda l: l.product_id.id == product_id
-            )
-            
-            if existing_line:
-                existing_line.write({
-                    'total_quantity': data['total_qty'],
-                    'purchase_request_line_ids': [(6, 0, data['pr_lines'].ids)],
-                    'earliest_date_required': data['earliest_date'],
-                })
-            else:
-                ConsolidatedLine.create({
-                    'consolidation_id': self.session_id.id,
-                    'product_id': product_id,
-                    'product_uom_id': data['uom'].id,
-                    'total_quantity': data['total_qty'],
-                    'purchase_request_line_ids': [(6, 0, data['pr_lines'].ids)],
-                    'earliest_date_required': data['earliest_date'],
-                    'state': 'draft'
-                })
-
-    def action_consolidate_selected_lines(self):
-        self.ensure_one()
-        if not self.line_ids:
-            raise UserError(_('No lines selected for consolidation.'))
-        
-        # Process the selected lines
-        self._process_selected_lines()
-        
-        # Update session state to in_progress
-        self.session_id.write({'state': 'in_progress'})
-        
-        return {'type': 'ir.actions.act_window_close'}
+# The SelectPRLinesWizard class has been moved to select_pr_lines_wizard.py

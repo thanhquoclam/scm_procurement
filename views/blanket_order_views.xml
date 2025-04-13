@@ -1,13 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Inherit Tree View -->
+    <record id="purchase_requisition_view_tree_inherit" model="ir.ui.view">
+        <field name="name">purchase.requisition.tree.inherit</field>
+        <field name="model">purchase.requisition</field>
+        <field name="inherit_id" ref="purchase_requisition.view_purchase_requisition_tree"/>
+        <field name="arch" type="xml">
+            <field name="vendor_id" position="after">
+                <field name="consolidated_line_ids" widget="many2many_tags"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Inherit Form View -->
+    <record id="purchase_requisition_view_form_inherit" model="ir.ui.view">
+        <field name="name">purchase.requisition.form.inherit</field>
+        <field name="model">purchase.requisition</field>
+        <field name="inherit_id" ref="purchase_requisition.view_purchase_requisition_form"/>
+        <field name="arch" type="xml">
+            <field name="vendor_id" position="after">
+                <field name="consolidated_line_ids" widget="many2many_tags"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Inherit Search View -->
+    <record id="purchase_requisition_view_search_inherit" model="ir.ui.view">
+        <field name="name">purchase.requisition.search.inherit</field>
+        <field name="model">purchase.requisition</field>
+        <field name="inherit_id" ref="purchase_requisition.view_purchase_requisition_filter"/>
+        <field name="arch" type="xml">
+            <field name="vendor_id" position="after">
+                <field name="consolidated_line_ids"/>
+            </field>
+        </field>
+    </record>
+
     <!-- Tree View -->
     <record id="view_blanket_order_tree" model="ir.ui.view">
-        <field name="name">scm.blanket.order.tree</field>
-        <field name="model">scm.blanket.order</field>
+        <field name="name">purchase.requisition.tree</field>
+        <field name="model">purchase.requisition</field>
         <field name="arch" type="xml">
             <tree string="Blanket Orders" decoration-info="state=='draft'" decoration-success="state=='active'" decoration-muted="state=='expired'" decoration-danger="state=='cancelled'">
                 <field name="name"/>
-                <field name="partner_id"/>
+                <field name="vendor_id"/>
                 <field name="date_start"/>
                 <field name="date_end"/>
                 <field name="state"/>
@@ -18,8 +54,8 @@
 
     <!-- Form View -->
     <record id="view_blanket_order_form" model="ir.ui.view">
-        <field name="name">scm.blanket.order.form</field>
-        <field name="model">scm.blanket.order</field>
+        <field name="name">purchase.requisition.form</field>
+        <field name="model">purchase.requisition</field>
         <field name="arch" type="xml">
             <form string="Blanket Order">
                 <header>
@@ -37,7 +73,7 @@
                     </div>
                     <group>
                         <group>
-                            <field name="partner_id"/>
+                            <field name="vendor_id"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
@@ -76,12 +112,12 @@
 
     <!-- Search View -->
     <record id="view_blanket_order_search" model="ir.ui.view">
-        <field name="name">scm.blanket.order.search</field>
-        <field name="model">scm.blanket.order</field>
+        <field name="name">purchase.requisition.search</field>
+        <field name="model">purchase.requisition</field>
         <field name="arch" type="xml">
             <search string="Blanket Orders">
                 <field name="name"/>
-                <field name="partner_id"/>
+                <field name="vendor_id"/>
                 <field name="date_start"/>
                 <field name="date_end"/>
                 <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
@@ -89,7 +125,7 @@
                 <filter string="Expired" name="expired" domain="[('state','=','expired')]"/>
                 <filter string="Cancelled" name="cancelled" domain="[('state','=','cancelled')]"/>
                 <group expand="0" string="Group By">
-                    <filter string="Vendor" name="partner" context="{'group_by':'partner_id'}"/>
+                    <filter string="Vendor" name="vendor" context="{'group_by':'vendor_id'}"/>
                     <filter string="Status" name="status" context="{'group_by':'state'}"/>
                     <filter string="Start Date" name="start_date" context="{'group_by':'date_start'}"/>
                     <filter string="End Date" name="end_date" context="{'group_by':'date_end'}"/>
@@ -101,7 +137,7 @@
     <!-- Action -->
     <record id="action_blanket_order" model="ir.actions.act_window">
         <field name="name">Blanket Orders</field>
-        <field name="res_model">scm.blanket.order</field>
+        <field name="res_model">purchase.requisition</field>
         <field name="view_mode">tree,form</field>
         <field name="search_view_id" ref="view_blanket_order_search"/>
         <field name="help" type="html">

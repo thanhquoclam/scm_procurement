@@ -5,13 +5,60 @@
         <field name="model">purchase.order</field>
         <field name="inherit_id" ref="purchase.purchase_order_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='partner_id']" position="after">
-                <field name="blanket_order_id" invisible="not is_from_blanket_order"/>
-                <field name="is_from_blanket_order" invisible="1"/>
+            <xpath expr="//header" position="inside">
+                <button name="action_approve"
+                        string="Approve"
+                        type="object"
+                        class="oe_highlight"
+                        groups="purchase.group_purchase_manager"
+                        invisible="approval_state != 'pending'"/>
+                        
+                <button name="action_reject"
+                        string="Reject"
+                        type="object"
+                        groups="purchase.group_purchase_manager"
+                        invisible="approval_state != 'pending'"/>
+                        
+                <field name="approval_state" widget="statusbar"/>
             </xpath>
+            
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="requisition_id" invisible="not is_from_agreement"/>
+                <field name="is_from_agreement" invisible="1"/>
+                <field name="consolidation_id" invisible="not is_from_consolidation"/>
+                <field name="is_from_consolidation" invisible="1"/>
+            </xpath>
+            
+            <xpath expr="//notebook" position="inside">
+                <page string="Approval Information" name="approval_info">
+                    <group>
+                        <group>
+                            <field name="approver_id" readonly="1"/>
+                            <field name="approval_date" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="rejection_reason" readonly="1" invisible="approval_state != 'rejected'"/>
+                        </group>
+                    </group>
+                </page>
+                <page string="Source Information" name="source_info" invisible="not is_from_consolidation">
+                    <group>
+                        <field name="purchase_request_ids" readonly="1">
+                            <tree>
+                                <field name="name"/>
+                                <field name="date_start"/>
+                                <field name="requester_id"/>
+                                <field name="state"/>
+                            </tree>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+            
             <xpath expr="//field[@name='order_line']/tree//field[@name='product_id']" position="after">
-                <field name="blanket_order_line_id" invisible="1"/>
-                <field name="is_from_blanket_order" invisible="1"/>
+                <field name="requisition_line_id" invisible="1"/>
+                <field name="is_from_agreement" invisible="1"/>
+                <field name="purchase_request_line_ids" invisible="1"/>
             </xpath>
         </field>
     </record>

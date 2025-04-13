@@ -11,8 +11,8 @@
                             <field name="consolidation_id" readonly="1"/>
                             <field name="vendor_id" required="1"/>
                             <field name="date_order" required="1"/>
-                            <field name="blanket_order_id" 
-                                   domain="[('partner_id', '=', vendor_id), ('state', '=', 'active')]" 
+                            <field name="agreement_id" 
+                                   domain="[('vendor_id', '=', vendor_id), ('state', '=', 'active')]" 
                                    options="{'no_create': True}" />
                         </group>
                         <group>

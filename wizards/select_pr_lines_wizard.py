@@ -26,6 +26,20 @@ class SelectPRLinesWizard(models.TransientModel):
         string='Available Lines',
         compute='_compute_available_line_ids'
     )
+    purchase_request_ids = fields.Many2many(
+        'purchase.request', 
+        string='Purchase Requests', 
+        compute='_compute_purchase_request_ids', 
+        store=True
+    )
+
+    @api.depends('session_id')
+    def _compute_purchase_request_ids(self):
+        for wizard in self:
+            if wizard.session_id:
+                wizard.purchase_request_ids = wizard.session_id.purchase_request_ids
+            else:
+                wizard.purchase_request_ids = False
 
     @api.depends('session_id')
     def _compute_available_line_ids(self):
@@ -48,8 +62,7 @@ class SelectPRLinesWizard(models.TransientModel):
                     ('request_id', 'in', session.purchase_request_ids.ids),
                     ('state', '=', 'approved')
                 ])
-                if pr_lines:
-                    res['line_ids'] = [(6, 0, pr_lines.ids)]
+                res['line_ids'] = [(6, 0, pr_lines.ids)]
         return res
 
     @api.onchange('session_id')
@@ -64,20 +77,51 @@ class SelectPRLinesWizard(models.TransientModel):
 
     def action_consolidate_selected_lines(self):
         self.ensure_one()
+        
         if not self.line_ids:
-            raise UserError(_('Please select at least one line to consolidate.'))
+            raise UserError(_("Please select at least one line to consolidate."))
         
-        _logger.info("Selected lines: %s", self.line_ids)
+        # Group lines by product
+        product_lines = {}
+        for line in self.line_ids:
+            if line.product_id.id not in product_lines:
+                product_lines[line.product_id.id] = {
+                    'product_id': line.product_id.id,
+                    'product_uom_id': line.product_uom_id.id,
+                    'lines': [],
+                    'total_quantity': 0.0
+                }
+            product_lines[line.product_id.id]['lines'].append(line)
+            product_lines[line.product_id.id]['total_quantity'] += line.product_qty
         
-        # Process the selected lines
-        result = self.session_id._process_pr_lines_safely(self.line_ids)
-        _logger.info("Process result: %s", result)
+        # Create or update consolidated lines
+        for product_id, data in product_lines.items():
+            # Check if consolidated line already exists
+            existing_line = self.env['scm.consolidated.pr.line'].search([
+                ('consolidation_id', '=', self.session_id.id),
+                ('product_id', '=', product_id)
+            ], limit=1)
+            
+            if existing_line:
+                # Update existing line
+                existing_line.write({
+                    'purchase_request_line_ids': [(6, 0, [line.id for line in data['lines']])],
+                    'total_quantity': data['total_quantity']
+                })
+            else:
+                # Create new line
+                self.env['scm.consolidated.pr.line'].create({
+                    'consolidation_id': self.session_id.id,
+                    'product_id': product_id,
+                    'product_uom_id': data['product_uom_id'],
+                    'total_quantity': data['total_quantity'],
+                    'purchase_request_line_ids': [(6, 0, [line.id for line in data['lines']])]
+                })
         
-        # Check if consolidated lines were created
-        consolidated_lines = self.session_id.consolidated_line_ids
-        _logger.info("Consolidated lines after processing: %s", consolidated_lines)
-        
-        # Update session state
-        self.session_id.write({'state': 'in_progress'})
+        # Update session state to in_progress after consolidating lines
+        self.session_id.write({
+            'state': 'in_progress',
+            'purchase_request_ids': [(6, 0, self.line_ids.mapped('request_id').ids)]
+        })
         
         return {'type': 'ir.actions.act_window_close'} 
