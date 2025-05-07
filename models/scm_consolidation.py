@@ -438,6 +438,12 @@ class PRConsolidationSession(models.Model):
     def action_create_po(self):
         self.ensure_one()
         
+        if self.state != 'approved':
+            raise UserError(_("Purchase orders can only be created from approved state."))
+            
+        # Update state to po_creation
+        self.write({'state': 'po_creation'})
+        
         # Create wizard with context
         return {
             'name': _('Create Purchase Order'),

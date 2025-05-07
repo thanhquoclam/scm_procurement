@@ -152,7 +152,7 @@ class CreatePOWizard(models.TransientModel):
                 po_line_vals = {
                     'product_id': line.product_id.id,
                     'name': line.product_id.display_name,
-                    'product_uom_qty': line.quantity_to_purchase,  # Use product_uom_qty instead of product_qty
+                    'product_uom_qty': line.quantity_to_purchase,
                     'product_uom': line.product_uom_id.id,
                     'price_unit': line.price_unit,
                     'date_planned': self.date_order,
@@ -179,12 +179,15 @@ class CreatePOWizard(models.TransientModel):
                 if po_line:
                     line.consolidated_line_id.write({
                         'purchase_order_id': po.id,
-                        'purchase_line_id': po_line.id
+                        'purchase_line_id': po_line.id,
+                        'state': 'po_created'
                     })
         
-        # Mark consolidation as processed if all lines have POs
-        if all(line.purchase_order_id for line in self.consolidation_id.consolidated_line_ids):
-            self.consolidation_id.state = 'done'
+        # Update consolidation state to po_created
+        self.consolidation_id.write({
+            'state': 'po_created',
+            'po_creation_date': fields.Datetime.now()
+        })
         
         return {
             'type': 'ir.actions.act_window',
