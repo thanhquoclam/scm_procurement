@@ -57,21 +57,30 @@ class SelectPRLinesWizard(models.TransientModel):
         res = super(SelectPRLinesWizard, self).default_get(fields_list)
         if 'line_ids' in fields_list and self.env.context.get('active_id'):
             session = self.env['scm.pr.consolidation.session'].browse(self.env.context.get('active_id'))
+            _logger.info("Getting default lines for session %s with %d PRs", session.id, len(session.purchase_request_ids))
+            
             if session.purchase_request_ids:
+                # Get all lines from approved PRs
                 pr_lines = self.env['purchase.request.line'].search([
                     ('request_id', 'in', session.purchase_request_ids.ids),
-                    ('state', '=', 'approved')
+                    ('request_id.state', '=', 'approved')
                 ])
+                _logger.info("Found %d PR lines", len(pr_lines))
                 res['line_ids'] = [(6, 0, pr_lines.ids)]
         return res
 
     @api.onchange('session_id')
     def _onchange_session_id(self):
         if self.session_id and self.session_id.purchase_request_ids:
+            _logger.info("Session changed to %s with %d PRs", self.session_id.id, len(self.session_id.purchase_request_ids))
+            
+            # Get all lines from approved PRs
             available_lines = self.env['purchase.request.line'].search([
                 ('request_id', 'in', self.session_id.purchase_request_ids.ids),
-                ('state', '=', 'approved')
+                ('request_id.state', '=', 'approved')
             ])
+            _logger.info("Found %d available lines", len(available_lines))
+            
             if available_lines:
                 self.line_ids = [(6, 0, available_lines.ids)]
 

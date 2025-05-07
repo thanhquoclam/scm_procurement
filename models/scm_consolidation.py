@@ -177,14 +177,16 @@ class PRConsolidationSession(models.Model):
         # Search for approved purchase requests in the date range
         domain = [
             ('state', '=', 'approved'),
-            ('date_start', '>=', self.date_from),
-            ('date_start', '<=', self.date_to)
+            ('line_ids.date_required', '>=', self.date_from),
+            ('line_ids.date_required', '<=', self.date_to)
         ]
         
         if self.category_ids:
             domain.append(('line_ids.product_id.categ_id', 'in', self.category_ids.ids))
         
+        _logger.info("Searching for PRs with domain: %s", domain)
         purchase_requests = self.env['purchase.request'].search(domain)
+        _logger.info("Found %d purchase requests", len(purchase_requests))
         
         if not purchase_requests:
             raise UserError(_('No approved purchase requests found for the selected period.'))
