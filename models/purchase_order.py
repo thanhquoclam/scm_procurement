@@ -45,10 +45,35 @@ class PurchaseOrder(models.Model):
         store=True
     )
 
+    requisition_line_id = fields.Many2one('purchase.requisition.line', string='Agreement Line')
+    purchase_request_ids = fields.Many2many('purchase.request', string='Purchase Requests')
+    purchase_request_line_ids = fields.Many2many('purchase.request.line', string='Purchase Request Lines')
+    approval_state = fields.Selection([
+        ('draft', 'Draft'),
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected')
+    ], string='Approval State', default='draft')
+    approver_id = fields.Many2one('res.users', string='Approved By')
+    approval_date = fields.Datetime(string='Approval Date')
+    rejection_reason = fields.Text(string='Rejection Reason')
+
     @api.depends('requisition_id')
     def _compute_is_from_agreement(self):
         for order in self:
             order.is_from_agreement = bool(order.requisition_id)
+
+    def action_view_consolidation(self):
+        self.ensure_one()
+        if self.consolidation_id:
+            return {
+                'type': 'ir.actions.act_window',
+                'res_model': 'scm.pr.consolidation.session',
+                'res_id': self.consolidation_id.id,
+                'view_mode': 'form',
+                'target': 'current',
+            }
+        return False
 
     # Status tracking fields
     approval_state = fields.Selection([

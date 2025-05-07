@@ -176,6 +176,11 @@ class PurchaseRequest(models.Model):
                 raise UserError(_("Only draft purchase requests can be deleted. Please contact your administrator for special cases."))
         return super(PurchaseRequest, self).unlink()
 
+    def button_done(self):
+        """Mark the purchase request as done."""
+        self.ensure_one()
+        return self.write({"state": "consolidated"})
+
 
 class PurchaseRequestLine(models.Model):
     _inherit = 'purchase.request.line'

@@ -45,7 +45,6 @@ This module extends Odoo's procurement capabilities with:
         'wizards/validate_inventory_wizard_views.xml',
         'wizards/scm_consolidation_wizard_views.xml',
         'wizards/select_pr_lines_wizard_views.xml',
-        'wizards/create_po_wizard_views.xml',
         
         # Reports
         'report/scm_consolidation_report.xml',

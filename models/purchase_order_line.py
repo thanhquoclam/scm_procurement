@@ -26,8 +26,6 @@ class PurchaseOrderLine(models.Model):
     # Override the standard price computation to consider purchase agreement prices
     @api.onchange('product_id', 'product_qty')
     def _onchange_product_id(self):
-        result = super(PurchaseOrderLine, self)._onchange_product_id()
-        
         # Check if there's a purchase agreement line with a specific price
         if self.order_id.requisition_id and self.product_id:
             agreement_line = self.env['purchase.requisition.line'].search([
@@ -56,4 +54,4 @@ class PurchaseOrderLine(models.Model):
                         }
                     }
         
-        return result 
+        return {} 

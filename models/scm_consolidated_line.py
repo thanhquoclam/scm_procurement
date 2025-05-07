@@ -173,6 +173,20 @@ class ConsolidatedPRLine(models.Model):
         tracking=True,
         domain="[('requisition_id', '=', requisition_id)]"
     )
+    
+    # Add fields for purchase order tracking
+    purchase_order_id = fields.Many2one(
+        'purchase.order',
+        string='Purchase Order',
+        tracking=True,
+        copy=False
+    )
+    purchase_line_id = fields.Many2one(
+        'purchase.order.line',
+        string='Purchase Order Line',
+        tracking=True,
+        copy=False
+    )
 
     @api.depends('product_id', 'warehouse_id', 'quantity', 'purchase_request_line_ids.product_qty')
     def _compute_inventory_data(self):
@@ -568,7 +582,7 @@ class ConsolidatedPRLine(models.Model):
     def _compute_quantity(self):
         for line in self:
             line.quantity = sum(line.purchase_request_line_ids.mapped('product_qty'))
-
+    
     @api.depends('quantity', 'onhand_qty', 'days_of_stock', 'lead_time')
     def _compute_stock_coverage(self):
         """Calculate stock coverage based on consolidation quantity"""

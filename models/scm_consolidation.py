@@ -151,10 +151,9 @@ class PRConsolidationSession(models.Model):
 
     def _compute_po_count(self):
         for session in self:
-            # session.po_count = self.env['purchase.order'].search_count([
-            #     ('consolidation_id', '=', session.id)
-            # ])
-            session.po_count = 0
+            session.po_count = self.env['purchase.order'].search_count([
+                ('consolidation_id', '=', session.id)
+            ])
 
     def _compute_pr_count(self):
         for session in self:
@@ -351,7 +350,6 @@ class PRConsolidationSession(models.Model):
                 'inventory_notes': line.notes or '',
             })
         
-        # Open the validation wizard
         return {
             'name': _('Validate Inventory'),
             'type': 'ir.actions.act_window',
@@ -435,14 +433,30 @@ class PRConsolidationSession(models.Model):
             }
         }
 
-    def action_create_purchase_orders(self):
-        """Create purchase orders from consolidated lines."""
+    def action_create_po(self):
         self.ensure_one()
-        # TODO: Implement PO creation logic
-        return self.write({
-            'state': 'po_created',
-            'po_creation_date': fields.Datetime.now()
-        })
+        
+        # Create wizard with context
+        return {
+            'name': _('Create Purchase Order'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'scm.create.po.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_consolidation_id': self.id,
+                'default_date_order': fields.Datetime.now(),
+                'default_currency_id': self.env.company.currency_id.id,
+                'default_line_ids': [(0, 0, {
+                    'consolidated_line_id': line.id,
+                    'product_id': line.product_id.id,
+                    'product_uom_id': line.product_uom_id.id,
+                    'quantity_to_purchase': line.quantity_to_purchase,
+                    'price_unit': line.purchase_price,
+                    'vendor_id': line.suggested_vendor_id.id if line.suggested_vendor_id else False,
+                }) for line in self.consolidated_line_ids.filtered(lambda l: l.quantity_to_purchase > 0)]
+            }
+        }
 
     def action_mark_done(self):
         """Mark the consolidation session as done."""
@@ -457,6 +471,23 @@ class PRConsolidationSession(models.Model):
         if self.state != 'po_creation':
             raise UserError(_("Cannot open PO creation wizard from current state."))
             
+        # Get consolidated lines with quantity to purchase > 0
+        consolidated_lines = self.consolidated_line_ids.filtered(
+            lambda l: l.quantity_to_purchase > 0
+        )
+        
+        # Create wizard line values
+        wizard_line_vals = []
+        for line in consolidated_lines:
+            wizard_line_vals.append((0, 0, {
+                'consolidated_line_id': line.id,
+                'product_id': line.product_id.id,
+                'product_uom_id': line.product_uom_id.id,
+                'quantity_to_purchase': line.quantity_to_purchase,
+                'price_unit': line.purchase_price,
+                'vendor_id': line.suggested_vendor_id.id if line.suggested_vendor_id else False,
+            }))
+            
         return {
             'name': _('Create Purchase Orders'),
             'type': 'ir.actions.act_window',
@@ -465,7 +496,9 @@ class PRConsolidationSession(models.Model):
             'target': 'new',
             'context': {
                 'default_consolidation_id': self.id,
-                'default_warehouse_id': self.warehouse_id.id,
+                'default_currency_id': self.currency_id.id if self.currency_id else self.env.company.currency_id.id,
+                'default_line_ids': wizard_line_vals,
+                'default_product_id': consolidated_lines[0].product_id.id if consolidated_lines else False,
             }
         }
 
@@ -508,7 +541,7 @@ class PRConsolidationSession(models.Model):
             'context': {'default_consolidation_id': self.id},
         }
         return action
-
+    
     # Phase 2 additions
     # Add inventory validation fields
     inventory_validated = fields.Boolean('Inventory Validated', default=False, copy=False)

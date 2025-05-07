@@ -91,10 +91,7 @@
                             type="object"
                             invisible="state != 'inventory_validation'"/>
                     
-                    <button name="action_create_purchase_orders"
-                            string="Create POs"
-                            type="object"
-                            invisible="state not in ['approved']"/>
+                    <button name="action_create_po" string="Create POs" type="object" invisible="state not in ['approved']"/>
                     
                     <button name="action_open_po_creation_wizard"
                             string="Create Purchase Orders"
