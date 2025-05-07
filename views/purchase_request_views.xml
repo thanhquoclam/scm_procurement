@@ -16,12 +16,12 @@
                             string="Approve" 
                             type="object"
                             class="oe_highlight"
-                            invisible="state not in ['submitted']"/>
+                            invisible="state not in ['to_approve']"/>
                     
                     <button name="action_reject" 
                             string="Reject" 
                             type="object"
-                            invisible="state not in ['submitted']"/>
+                            invisible="state not in ['to_approve']"/>
                     
                     <button name="action_reset" 
                             string="Reset to Draft" 
@@ -34,7 +34,7 @@
                             invisible="state in ['cancelled', 'rejected']"/>
                     
                     <field name="state" widget="statusbar" 
-                           statusbar_visible="draft,submitted,approved,consolidated"/>
+                           statusbar_visible="draft,to_approve,approved,consolidated"/>
                 </header>
                 <sheet>
                     <div class="oe_title">

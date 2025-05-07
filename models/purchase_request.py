@@ -22,7 +22,7 @@ class PurchaseRequest(models.Model):
     )
     state = fields.Selection([
         ('draft', 'Draft'),
-        ('submitted', 'Submitted'),
+        ('to_approve', 'To Approve'),
         ('approved', 'Approved'),
         ('consolidated', 'Consolidated'),
         ('rejected', 'Rejected'),
@@ -127,7 +127,11 @@ class PurchaseRequest(models.Model):
         self.ensure_one()
         if not self.line_ids:
             raise UserError(_("Cannot submit an empty purchase request."))
-        return self.write({'state': 'submitted'})
+        return self.write({'state': 'to_approve'})
+
+    def button_to_approve(self):
+        """Submit the purchase request for approval."""
+        return self.action_submit()
 
     def action_approve(self):
         """Approve the purchase request."""
@@ -162,6 +166,20 @@ class PurchaseRequest(models.Model):
         for request in self:
             if request.state != 'draft' and not request.line_ids:
                 raise UserError(_("Cannot submit or approve an empty purchase request."))
+
+    def unlink(self):
+        """Control deletion of purchase requests based on user rights and state."""
+        is_admin = self.env.user._is_admin() or \
+                  self.env.user.has_group('base.group_system')
+        for request in self:
+            if not is_admin and request.state != 'draft':
+                raise UserError(_("Only draft purchase requests can be deleted. Please contact your administrator for special cases."))
+        return super(PurchaseRequest, self).unlink()
+
+    def button_done(self):
+        """Mark the purchase request as done."""
+        self.ensure_one()
+        return self.write({"state": "consolidated"})
 
 
 class PurchaseRequestLine(models.Model):
@@ -220,7 +238,6 @@ class PurchaseRequestLine(models.Model):
         # This is a placeholder - in Phase 4, this will be based on PO dates
         for line in self:
             line.expected_fulfillment_date = False
-
     
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -242,3 +259,15 @@ class PurchaseRequestLine(models.Model):
         domain="[('category_id', '=', product_uom_category_id)]",
         required=True
     )
+
+    def unlink(self):
+        """Control deletion of purchase request lines based on user rights and state."""
+        is_admin = self.env.user._is_admin() or \
+                  self.env.user.has_group('base.group_system')
+        if is_admin:
+            return models.Model.unlink(self)
+            
+        for line in self:
+            if line.request_id and line.request_id.state != 'draft':
+                raise UserError(_("You can only delete a purchase request line if the purchase request is in draft state."))
+        return super(PurchaseRequestLine, self).unlink()
