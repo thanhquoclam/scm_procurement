@@ -65,6 +65,8 @@
 
 **3. Functional Requirements**
 
+## Phase 1: PR Consolidation
+
 **3.1. PR Consolidation (Phase 1)**
 
 *   **FR-PR-001:** The system shall allow users to create a consolidation session with a date range and optional filters.
@@ -72,6 +74,16 @@
 *   **FR-PR-003:** The system shall aggregate quantities by product, creating consolidated lines.
 *   **FR-PR-004:** The system shall allow users to review and adjust consolidated lines.
 *   **FR-PR-005:** The system shall allow users to confirm the consolidation, making it ready for inventory validation.
+
+**Implementation Status (April 2025):**
+
+*   **FR-INV-001 to FR-INV-006:** These requirements have been implemented with the `validate.inventory.wizard`. The wizard displays all consolidated lines with their current stock, required quantity, and available quantity. Users can filter to view only critical items, and the system calculates the quantity to purchase. After validation, users can proceed to PO creation.
+
+*   **FR-INV-007:** The system is set up to handle inventory exceptions, but the approval workflow is still being refined. The system can request manager approval for critical inventory issues, but the notification system is still being tested.
+
+*   **FR-INV-008:** The system can update safety stock levels based on validation, but the calculation logic is still being refined.
+
+## Phase 2: Inventory Validation
 
 **3.2. Inventory Validation (Phase 2)**
 
@@ -91,6 +103,8 @@
 *   **FR-INV-007:** The system is set up to handle inventory exceptions, but the approval workflow is still being refined. The system can request manager approval for critical inventory issues, but the notification system is still being tested.
 
 *   **FR-INV-008:** The system can update safety stock levels based on validation, but the calculation logic is still being refined.
+
+## Phase 3: Purchase Order Creation
 
 **3.3. Purchase Order Creation (Phase 3)**
 
@@ -445,271 +459,234 @@
             4. Create user interface elements
             5. Implement validation rules
 
-**3.4. Change Management Process (Phase 4)**
+## Phase 4: Fulfillment Tracking
 
-*   **FR-CM-001: Detect Changes in PRs**
+### FR-FT-001: PR Fulfillment Plan Model
+- **Source:** High-Level Req. Phase 4.1
+- **Priority:** High
+- **Description:**
+  The system shall implement a PR Fulfillment Plan model to track the fulfillment of each purchase request line, including links to fulfillment actions such as purchase orders and internal transfers.
+- **User Interface (UI) Description:**
+  - A new model `scm.pr.fulfillment.plan` is accessible from the PR and PR line forms (as a tab or stat button).
+  - The fulfillment plan form shows:
+    - Linked PR line(s)
+    - Fulfillment method (PO, internal transfer, etc.)
+    - Status (pending, in progress, fulfilled, exception)
+    - Linked PO(s) or transfer(s)
+    - Quantities planned, fulfilled, remaining
+    - Timeline and notes
+- **Business Rules/Logic:**
+  - Each PR line can have one or more fulfillment plan records.
+  - Each fulfillment plan must specify a fulfillment method and link to the relevant action (PO, transfer, etc.).
+  - Status is computed based on fulfillment progress.
+- **Data Handling:**
+  - Input: PR line, fulfillment method, quantities, linked actions.
+  - Processing: Create/update fulfillment plan records as actions are taken.
+  - Output: Updated fulfillment plan records, status, and links.
+- **Preconditions:**
+  - PR lines exist and are ready for fulfillment.
+  - User has permission to create/update fulfillment plans.
+- **Postconditions:**
+  - Fulfillment plan records are created and linked to PR lines and actions.
+  - Status is updated as fulfillment progresses.
+- **Error Handling/Alternative Flows:**
+  - If a fulfillment plan cannot be created (e.g., missing data), display a validation error.
+  - If a fulfillment action fails (e.g., PO cancelled), update the plan status and notify the user.
 
-    *   **Source:** High-Level Req. Phase 4.1
-    *   **Priority:** High
-    *   **Description:** The system shall automatically detect changes in Purchase Requests that affect the current consolidation session.
-    *   **User Interface (UI) Description:**
-        *   A dedicated tab "Change Log" in the consolidation session form view
-        *   Change log entries showing:
-            *   Type of change (PR Added/Modified/Deleted)
-            *   Date and time of change
-            *   User who made the change
-            *   Impact assessment
-            *   Status of the change
-        *   Filter options for change types and status
-    *   **Business Rules/Logic:**
-        *   Monitor PRs linked to the consolidation session
-        *   Detect changes in:
-            *   PR quantities
-            *   PR status
-            *   PR dates
-            *   PR line additions/deletions
-        *   Calculate impact on consolidation totals
-        *   Update affected consolidated lines
-    *   **Data Handling:**
-        *   Input: Changes in PR data
-        *   Processing: 
-            *   Detect changes
-            *   Calculate impact
-            *   Create change log entry
-            *   Update consolidation data
-        *   Output: Updated consolidation data and change log entries
-    *   **Preconditions:**
-        *   Consolidation session exists
-        *   PRs are linked to the session
-        *   User has permission to view changes
-    *   **Postconditions:**
-        *   Change is logged
-        *   Consolidation data is updated
-        *   Impact is assessed
-        *   Team is notified
+### FR-FT-002: Integration with PO Receipts
+- **Source:** High-Level Req. Phase 4.2
+- **Priority:** High
+- **Description:**
+  The system shall automatically update the fulfillment status of PR lines and fulfillment plans based on the receipt of goods in related purchase orders.
+- **User Interface (UI) Description:**
+  - When a PO receipt is validated, the related PR fulfillment plan and PR line status are updated.
+  - The PR and fulfillment plan forms show received quantities and fulfillment progress.
+- **Business Rules/Logic:**
+  - When a PO receipt is validated, update the linked fulfillment plan and PR line with the received quantity.
+  - If the received quantity fulfills the plan, mark it as fulfilled; otherwise, update as partially fulfilled.
+- **Data Handling:**
+  - Input: PO receipt validation event.
+  - Processing: Update fulfillment plan and PR line status and quantities.
+  - Output: Updated status and quantities on fulfillment plan and PR line.
+- **Preconditions:**
+  - PO is linked to a fulfillment plan and PR line.
+  - PO receipt is validated.
+- **Postconditions:**
+  - Fulfillment plan and PR line status/quantities are updated.
+- **Error Handling/Alternative Flows:**
+  - If the PO is not linked to a fulfillment plan, log a warning and skip update.
+  - If received quantity exceeds planned, flag as exception.
 
-*   **FR-CM-002: Detect Changes in Inventory**
+### FR-FT-003: Internal Transfer Suggestions
+- **Source:** High-Level Req. Phase 4.3
+- **Priority:** Medium
+- **Description:**
+  The system shall suggest internal transfers for PR lines that can be fulfilled from available stock in other locations/warehouses.
+- **User Interface (UI) Description:**
+  - In the fulfillment plan or PR line view, a button or suggestion appears if internal transfer is possible.
+  - A wizard allows the user to review, accept, or reject the suggested transfer.
+  - Accepted transfers create a stock transfer order linked to the fulfillment plan.
+- **Business Rules/Logic:**
+  - The system checks available stock in other locations/warehouses.
+  - If sufficient stock exists, suggest an internal transfer.
+  - User can accept (creates transfer) or reject (removes suggestion).
+- **Data Handling:**
+  - Input: PR line, stock levels in all locations.
+  - Processing: Suggest transfer if possible, create transfer order if accepted.
+  - Output: Internal transfer order, updated fulfillment plan.
+- **Preconditions:**
+  - PR line exists and is not yet fulfilled.
+  - Stock is available in other locations.
+- **Postconditions:**
+  - Internal transfer order is created and linked to fulfillment plan if accepted.
+  - PR line and fulfillment plan status are updated.
+- **Error Handling/Alternative Flows:**
+  - If stock is no longer available when user accepts, show error and do not create transfer.
+  - If user rejects, log the decision.
 
-    *   **Source:** High-Level Req. Phase 4.2
-    *   **Priority:** High
-    *   **Description:** The system shall monitor and detect changes in inventory levels that affect the current consolidation session.
-    *   **User Interface (UI) Description:**
-        *   Change log entries for inventory changes
-        *   Visual indicators for critical stock changes
-        *   Impact assessment view
-        *   Options to revalidate inventory
-    *   **Business Rules/Logic:**
-        *   Monitor stock levels for products in consolidation
-        *   Detect changes in:
-            *   Available quantity
-            *   Reserved quantity
-            *   Incoming quantity
-        *   Trigger revalidation if impact is significant
-        *   Update inventory status of affected lines
-    *   **Data Handling:**
-        *   Input: Stock movement data
-        *   Processing:
-            *   Compare new stock levels
-            *   Calculate impact
-            *   Create change log
-            *   Update inventory status
-        *   Output: Updated inventory data and change log
-    *   **Preconditions:**
-        *   Consolidation session exists
-        *   Products have stock information
-        *   User has permission to view inventory
-    *   **Postconditions:**
-        *   Change is logged
-        *   Inventory status is updated
-        *   Impact is assessed
-        *   Team is notified
+### FR-FT-004: PR Status Updates
+- **Source:** High-Level Req. Phase 4.4
+- **Priority:** High
+- **Description:**
+  The system shall automatically update the status of each purchase request (PR) and PR line based on fulfillment progress (e.g., pending, in progress, partially fulfilled, fulfilled).
+- **User Interface (UI) Description:**
+  - PR and PR line forms and list views display current fulfillment status.
+  - Status is updated in real time as fulfillment actions are completed.
+- **Business Rules/Logic:**
+  - Status is computed based on linked fulfillment plans and their progress.
+  - Statuses include: pending, in progress, partially fulfilled, fulfilled, exception.
+- **Data Handling:**
+  - Input: Fulfillment plan and action status.
+  - Processing: Compute and update PR/PR line status.
+  - Output: Updated status fields on PR and PR line.
+- **Preconditions:**
+  - PR and PR lines exist and are linked to fulfillment plans.
+- **Postconditions:**
+  - Status fields on PR and PR lines reflect current fulfillment progress.
+- **Error Handling/Alternative Flows:**
+  - If fulfillment plan is deleted or unlinked, recalculate status.
+  - If conflicting statuses exist (e.g., one plan fulfilled, one pending), show as partially fulfilled.
 
-*   **FR-CM-003: Detect Changes in Purchase Orders**
+## Phase 5: Change Management & Optimization
 
-    *   **Source:** High-Level Req. Phase 4.3
-    *   **Priority:** High
-    *   **Description:** The system shall monitor changes in Purchase Orders created from the consolidation session.
-    *   **User Interface (UI) Description:**
-        *   Change log entries for PO changes
-        *   PO status tracking
-        *   Impact on PR fulfillment
-        *   Options to update fulfillment plans
-    *   **Business Rules/Logic:**
-        *   Monitor POs linked to consolidation
-        *   Detect changes in:
-            *   PO status
-            *   PO quantities
-            *   Delivery dates
-            *   PO cancellations
-        *   Update PR fulfillment plans
-        *   Recalculate delivery timelines
-    *   **Data Handling:**
-        *   Input: PO change data
-        *   Processing:
-            *   Detect PO changes
-            *   Update fulfillment plans
-            *   Create change log
-            *   Recalculate timelines
-        *   Output: Updated fulfillment data and change log
-    *   **Preconditions:**
-        *   Consolidation session exists
-        *   POs are created from session
-        *   User has permission to view POs
-    *   **Postconditions:**
-        *   Change is logged
-        *   Fulfillment plans are updated
-        *   Impact is assessed
-        *   Team is notified
+### FR-CM-001: Change Log Implementation
+- **Source:** High-Level Req. Phase 5.1
+- **Priority:** High
+- **Description:**
+  The system shall maintain a change log for key actions and modifications related to PRs, POs, fulfillment plans, and inventory transfers.
+- **User Interface (UI) Description:**
+  - A "Change Log" tab or stat button is available on PR, PO, and fulfillment plan forms.
+  - The change log view lists:
+    - Date/time of change
+    - User who made the change
+    - Action type (create, update, delete, status change, etc.)
+    - Affected fields and their old/new values
+    - Related record links
+- **Business Rules/Logic:**
+  - All create, update, and delete actions on tracked models are logged.
+  - Only users with appropriate permissions can view the full change log.
+  - The log is immutable (cannot be edited or deleted).
+- **Data Handling:**
+  - Input: Model changes (PR, PO, fulfillment plan, inventory transfer)
+  - Processing: Automatically create a change log entry for each tracked action.
+  - Output: Change log records linked to the relevant business objects.
+- **Preconditions:**
+  - User performs an action on a tracked model.
+- **Postconditions:**
+  - A new change log entry is created and visible in the UI.
+- **Error Handling/Alternative Flows:**
+  - If logging fails, display a warning and continue the main transaction (do not block business process).
 
-*   **FR-CM-004: Impact Assessment**
+### FR-CM-002: Change Detection and Impact Assessment
+- **Source:** High-Level Req. Phase 5.2
+- **Priority:** High
+- **Description:**
+  The system shall detect changes to PRs, POs, fulfillment plans, and inventory transfers, and assess the impact of each change on related records and processes.
+- **User Interface (UI) Description:**
+  - When a significant change is detected (e.g., PR quantity change, PO cancellation), a notification or banner is shown on affected records.
+  - An "Impact Analysis" button or section displays affected downstream records (e.g., which POs or fulfillment plans are impacted by a PR change).
+- **Business Rules/Logic:**
+  - The system tracks dependencies between PRs, POs, fulfillment plans, and inventory transfers.
+  - When a change occurs, the system identifies and flags all related records that may be affected.
+- **Data Handling:**
+  - Input: Change events on tracked models.
+  - Processing: Analyze dependencies and flag affected records.
+  - Output: Impact flags, notifications, and analysis reports.
+- **Preconditions:**
+  - A change is made to a tracked record.
+- **Postconditions:**
+  - All affected records are flagged and visible to users.
+- **Error Handling/Alternative Flows:**
+  - If dependency analysis fails, log the error and notify the system administrator.
 
-    *   **Source:** High-Level Req. Phase 4.4
-    *   **Priority:** High
-    *   **Description:** The system shall assess and communicate the impact of changes on the consolidation session and related processes.
-    *   **User Interface (UI) Description:**
-        *   Impact assessment dashboard
-        *   Visual indicators for impact severity
-        *   Detailed impact reports
-        *   Action recommendation panel
-    *   **Business Rules/Logic:**
-        *   Calculate impact on:
-            *   Total quantities
-            *   Delivery timelines
-            *   Purchase costs
-            *   PR fulfillment
-        *   Categorize impact severity
-        *   Generate action recommendations
-        *   Prioritize required actions
-    *   **Data Handling:**
-        *   Input: Change data and current state
-        *   Processing:
-            *   Calculate impact metrics
-            *   Generate recommendations
-            *   Update impact assessment
-            *   Create notifications
-        *   Output: Impact assessment and recommendations
-    *   **Preconditions:**
-        *   Change is detected
-        *   Current state is known
-        *   User has permission to view impact
-    *   **Postconditions:**
-        *   Impact is assessed
-        *   Recommendations are generated
-        *   Team is notified
-        *   Action plan is created
+### FR-CM-003: Change Resolution and Notification
+- **Source:** High-Level Req. Phase 5.3
+- **Priority:** High
+- **Description:**
+  The system shall provide mechanisms for users to resolve detected changes (e.g., approve, reject, or modify changes) and send notifications to relevant users when key events occur.
+- **User Interface (UI) Description:**
+  - When a change is detected, users see options to approve, reject, or modify the change.
+  - Notification preferences are configurable per user or role.
+  - Notifications are sent via Odoo's chatter, email, or in-app alerts.
+- **Business Rules/Logic:**
+  - Only authorized users can resolve changes.
+  - All resolutions are logged in the change log.
+  - Notifications are sent according to user preferences and business rules.
+- **Data Handling:**
+  - Input: User actions to resolve changes; notification triggers.
+  - Processing: Update record status, log resolution, send notifications.
+  - Output: Updated records, change log entries, sent notifications.
+- **Preconditions:**
+  - A change requiring resolution is detected.
+- **Postconditions:**
+  - The change is resolved and all relevant users are notified.
+- **Error Handling/Alternative Flows:**
+  - If notification delivery fails, log the error and retry or escalate.
 
-*   **FR-CM-005: Change Resolution**
+### FR-CM-004: Performance Optimizations
+- **Source:** High-Level Req. Phase 5.4
+- **Priority:** Medium
+- **Description:**
+  The system shall be optimized to handle large volumes of PRs, POs, and fulfillment plans without significant performance degradation.
+- **User Interface (UI) Description:**
+  - No direct UI, but users experience fast response times even with large datasets.
+- **Business Rules/Logic:**
+  - Use batch processing for bulk operations.
+  - Optimize database queries and use appropriate indexes.
+  - Archive or purge old records as needed.
+- **Data Handling:**
+  - Input: Large datasets and batch operations.
+  - Processing: Efficient queries, batch jobs, and background processing.
+  - Output: Fast, reliable system performance.
+- **Preconditions:**
+  - Large volume of data or batch operation initiated.
+- **Postconditions:**
+  - Operation completes within acceptable time limits.
+- **Error Handling/Alternative Flows:**
+  - If an operation exceeds time limits, log and notify the administrator; provide user feedback.
 
-    *   **Source:** High-Level Req. Phase 4.5
-    *   **Priority:** High
-    *   **Description:** The system shall provide tools and workflows for resolving detected changes and updating the consolidation session accordingly.
-    *   **User Interface (UI) Description:**
-        *   Change resolution wizard
-        *   Action tracking interface
-        *   Resolution status updates
-        *   History of resolutions
-    *   **Business Rules/Logic:**
-        *   Guide users through resolution steps
-        *   Track resolution progress
-        *   Update consolidation data
-        *   Maintain resolution history
-        *   Close change records when resolved
-    *   **Data Handling:**
-        *   Input: Resolution actions
-        *   Processing:
-            *   Apply changes
-            *   Update status
-            *   Record actions
-            *   Notify stakeholders
-        *   Output: Updated consolidation data and resolution records
-    *   **Preconditions:**
-        *   Change is detected
-        *   Impact is assessed
-        *   User has permission to resolve changes
-    *   **Postconditions:**
-        *   Changes are resolved
-        *   Consolidation is updated
-        *   Resolution is documented
-        *   Status is updated
-
-*   **FR-CM-006: Change Notification System**
-
-    *   **Source:** High-Level Req. Phase 4.6
-    *   **Priority:** Medium
-    *   **Description:** The system shall notify relevant stakeholders about detected changes and required actions.
-    *   **User Interface (UI) Description:**
-        *   Notification center
-        *   Email notification settings
-        *   In-app notification panel
-        *   Notification history
-    *   **Business Rules/Logic:**
-        *   Define notification rules
-        *   Determine notification recipients
-        *   Set notification priorities
-        *   Track notification status
-        *   Allow notification preferences
-    *   **Data Handling:**
-        *   Input: Change data and user preferences
-        *   Processing:
-            *   Generate notifications
-            *   Send to recipients
-            *   Track delivery
-            *   Record responses
-        *   Output: Notifications and delivery status
-    *   **Preconditions:**
-        *   Change is detected
-        *   Impact is assessed
-        *   Notification rules are configured
-    *   **Postconditions:**
-        *   Notifications are sent
-        *   Delivery is tracked
-        *   Responses are recorded
-        *   Status is updated
-
-*   **FR-CM-007: Change History and Reporting**
-
-    *   **Source:** High-Level Req. Phase 4.7
-    *   **Priority:** Medium
-    *   **Description:** The system shall maintain a comprehensive history of changes and provide reporting capabilities.
-    *   **User Interface (UI) Description:**
-        *   Change history view
-        *   Reporting dashboard
-        *   Export options
-        *   Filter and search capabilities
-    *   **Business Rules/Logic:**
-        *   Record all changes
-        *   Track resolution status
-        *   Calculate change metrics
-        *   Generate reports
-        *   Support data export
-    *   **Data Handling:**
-        *   Input: Change and resolution data
-        *   Processing:
-            *   Aggregate history
-            *   Calculate metrics
-            *   Generate reports
-            *   Prepare exports
-        *   Output: History records and reports
-    *   **Preconditions:**
-        *   Changes are recorded
-        *   User has permission to view history
-    *   **Postconditions:**
-        *   History is maintained
-        *   Reports are generated
-        *   Data is available for export
-        *   Metrics are calculated
-
-**Implementation Status (April 2025):**
-
-*   **FR-CM-001 to FR-CM-003:** These requirements have been implemented with the change detection system. The system can detect changes in PRs, inventory levels, and POs, and create appropriate change log entries.
-
-*   **FR-CM-004:** The impact assessment functionality is implemented but needs refinement in the recommendation engine and impact calculation algorithms.
-
-*   **FR-CM-005:** The change resolution workflow is implemented with basic functionality. Additional features for complex resolution scenarios are planned.
-
-*   **FR-CM-006:** The notification system is implemented with basic email and in-app notifications. Advanced notification rules and preferences are still being developed.
-
-*   **FR-CM-007:** Basic change history and reporting are implemented. Advanced reporting features and metrics are planned for future releases.
+### FR-CM-005: Advanced Reporting
+- **Source:** High-Level Req. Phase 5.5
+- **Priority:** Medium
+- **Description:**
+  The system shall provide advanced reporting capabilities for PR fulfillment, PO performance, inventory movements, and change history.
+- **User Interface (UI) Description:**
+  - Reports are accessible from a dedicated menu or dashboard.
+  - Users can filter reports by date, product, vendor, status, and other criteria.
+  - Reports can be exported to Excel, PDF, or other formats.
+- **Business Rules/Logic:**
+  - Only users with reporting permissions can access advanced reports.
+  - Reports reflect real-time data and are updated as records change.
+- **Data Handling:**
+  - Input: User-selected filters and criteria.
+  - Processing: Generate reports using efficient queries and aggregations.
+  - Output: Displayed and exportable reports.
+- **Preconditions:**
+  - User has access to reporting features.
+- **Postconditions:**
+  - Reports are generated and available for review/export.
+- **Error Handling/Alternative Flows:**
+  - If report generation fails, display an error and allow the user to retry.
 
 ---
 
@@ -776,178 +753,4 @@
     *   Input: `scm_pr_consolidation_session` record ID, `date_from`, `date_to`, `department_ids`, `category_ids`.
     *   Processing: Query `purchase_request` and `purchase_request_line`. Perform in-memory aggregation by product.
     *   Output:
-        *   Create new records in `scm_consolidated_pr_line` with calculated `total_quantity`, `earliest_date_required`, linked `product_id`, `product_uom_id` (product's default purchase UoM), and `consolidation_id`. Set line `state` to `'draft'` (or similar initial state).
-        *   Create entries in `scm_pr_consolidation_request_rel` linking the session to found `purchase_request` records.
-        *   Create entries in the M2M relation table linking `scm_consolidated_pr_line` to source `purchase_request_line` records.
-        *   Update the `scm_pr_consolidation_session` record's `state` to `'in_progress'`.
-*   **Preconditions:**
-    *   The `scm_pr_consolidation_session` record exists and its `state` is 'Draft'.
-    *   User has permission to execute the action/method.
-    *   `purchase_request` module is installed and contains approved PRs.
-*   **Postconditions:**
-    *   The `scm_pr_consolidation_session` record's `state` is updated to 'In Progress'.
-    *   `scm_consolidated_pr_line` records are created and linked to the session.
-    *   The session is linked to the source `purchase_request` records.
-    *   Consolidated lines are linked to source `purchase_request_line` records.
-    *   If no PRs found, state remains 'Draft' and a message is shown.
-*   **Error Handling/Alternative Flows:**
-    *   If no matching approved PRs are found, display a notification and keep the session state as 'Draft'.
-    *   Handle potential errors during data aggregation (e.g., missing product data, UoM issues) with appropriate logging and potentially user warnings.
-
----
-
-#### **FR-SCM-003: Validate Consolidation Data**
-
-*   **Source:** High-Level Req. Phase 1.3
-*   **Priority:** High
-*   **Description:** The system shall allow authorized users to review the generated consolidated lines and confirm their readiness for the next phase (Inventory Validation).
-*   **User Interface (UI) Description:**
-    *   A button (e.g., "Validate") shall be visible and enabled on the `scm_pr_consolidation_session` form view when the record `state` is 'In Progress'.
-    *   Users review the lines in the `consolidated_line_ids` list/tree view.
-    *   Clicking the "Validate" button triggers the state change.
-    *   Upon successful completion, the `state` in the status bar changes to 'Validated'.
-*   **Business Rules/Logic:**
-    *   This action primarily serves as a workflow gate.
-    *   The system must check if the current state is 'In Progress'.
-    *   The system might optionally check if `consolidated_line_ids` exist before allowing validation.
-*   **Data Handling:**
-    *   Input: `scm_pr_consolidation_session` record ID.
-    *   Processing: Verify current state.
-    *   Output: Update the `scm_pr_consolidation_session` record's `state` to `'validated'`. Populate the `validation_date` field with the current timestamp.
-*   **Preconditions:**
-    *   The `scm_pr_consolidation_session` record exists and its `state` is 'In Progress'.
-    *   Consolidated lines have been generated.
-    *   User has permission to execute the validation action/method.
-*   **Postconditions:**
-    *   The `scm_pr_consolidation_session` record's `state` is updated to 'Validated'.
-    *   The `validation_date` field is set.
-*   **Error Handling/Alternative Flows:**
-    *   If the state is not 'In Progress', the button should be disabled or display an error if clicked.
-    *   If no consolidated lines exist, potentially display a warning before allowing validation or prevent it.
-
----
-
-#### **FR-SCM-004: Perform Inventory Validation Check**
-
-*   **Source:** High-Level Req. Phase 2.1
-*   **Priority:** High
-*   **Description:** Upon user initiation from a 'Validated' session, the system shall automatically analyze each consolidated line, comparing the required quantity (`total_quantity`) against the current available stock in the specified warehouse, considering inventory rules (safety stock, reorder points), and update each line with its calculated inventory status and quantity to purchase.
-*   **User Interface (UI) Description:**
-    *   A button (e.g., "Start Inventory Validation") shall be visible and enabled on the `scm_pr_consolidation_session` form view when the record `state` is 'Validated'.
-    *   Clicking the button initiates the process. A visual indicator may display.
-    *   Upon successful completion, the `state` in the status bar changes to 'Inventory Validation'.
-    *   In the `consolidated_line_ids` list/tree view:
-        *   The `inventory_status` column is populated (e.g., 'Sufficient', 'Below Safety', 'Stockout'). Visual cues (colors, icons) should represent the status.
-        *   The `available_quantity` column shows the stock level at the time of checking.
-        *   The `quantity_to_purchase` column shows the calculated quantity needed.
-    *   Computed fields on the session header (e.g., `has_inventory_issues`, `total_stockout_items`) are updated.
-*   **Business Rules/Logic:**
-    *   Iterate through each `scm_consolidated_pr_line` linked to the session.
-    *   For each line:
-        *   Get `product_id` and `total_quantity`.
-        *   Determine the relevant `warehouse_id` from the session.
-        *   Fetch `available_quantity` (quantity on hand) for the product in the specific warehouse context.
-        *   Fetch relevant inventory rule parameters (Safety Stock, Reorder Point) from `scm_inventory_rule` or standard `product.product` fields, considering warehouse/company context.
-        *   Calculate `quantity_to_purchase = max(0, total_quantity - available_quantity)`.
-        *   Determine `inventory_status`:
-            *   If `available_quantity >= total_quantity`: 'Sufficient'.
-            *   Else if `available_quantity <= 0`: 'Stockout'.
-            *   Else if `available_quantity < safety_stock`: 'Below Safety'.
-            *   Else if `available_quantity < reorder_point`: 'Below Reorder'.
-            *   Else: 'Partial' (or other relevant status).
-        *   Update the `scm_consolidated_pr_line` record.
-    *   After processing all lines, update the `scm_pr_consolidation_session` state to `'inventory_validation'`.
-    *   Trigger recomputation of related stored fields on the session based on updated line statuses.
-*   **Data Handling:**
-    *   Input: `scm_pr_consolidation_session` record ID, linked `scm_consolidated_pr_line` records. Access to `stock.quant`, `product.product`, `scm_inventory_rule` data.
-    *   Processing: Inventory level lookups, comparison logic based on rules.
-    *   Output: Update `available_quantity`, `quantity_to_purchase`, `inventory_status` on `scm_consolidated_pr_line` records. Update `state` on `scm_pr_consolidation_session`. Update computed fields like `has_inventory_issues` on the session.
-*   **Preconditions:**
-    *   The `scm_pr_consolidation_session` record exists and its `state` is 'Validated'.
-    *   A valid `warehouse_id` is set on the session.
-    *   Products on consolidated lines exist and have stock information available in Odoo.
-    *   Inventory rules (if used) are configured.
-    *   User has permission to execute the inventory check action/method.
-*   **Postconditions:**
-    *   The `scm_pr_consolidation_session` record's `state` is updated to 'Inventory Validation'.
-    *   All linked `scm_consolidated_pr_line` records have their inventory-related fields (`available_quantity`, `quantity_to_purchase`, `inventory_status`) updated.
-    *   Session-level computed fields reflecting inventory status are updated.
-*   **Error Handling/Alternative Flows:**
-    *   Handle cases where product stock information or inventory rules cannot be found (log errors, potentially set line status to 'Error').
-    *   Ensure calculations handle zero or null values for stock/rules appropriately.
-
----
-
-#### **FR-SCM-005: Review Inventory Status and Handle Exceptions**
-
-*   **Source:** High-Level Req. Phase 2.2
-*   **Priority:** High
-*   **Description:** The system shall provide an interface for users (Procurement Officer, Inventory Manager) to review lines with non-sufficient inventory statuses, add notes, flag exceptions, and potentially trigger approval workflows for critical issues.
-*   **User Interface (UI) Description:**
-    *   Within the `scm_pr_consolidation_session` form view (state 'Inventory Validation'), the `consolidated_line_ids` list should allow filtering by `inventory_status`. Lines with issues should be visually distinct.
-    *   A button (e.g., "Review Issues") might open a dedicated wizard or allow editing directly in the list/form view of the lines.
-    *   For each line being reviewed, display: `product_id`, `total_quantity`, `available_quantity`, calculated `quantity_to_purchase`, current `inventory_status`.
-    *   Editable fields should include:
-        *   `inventory_notes` (Text): For user comments.
-        *   `inventory_exception` (Boolean): Checkbox to flag manual review/override.
-    *   Actions available might include:
-        *   "Save Notes/Flag": Persist comments and exception flag.
-        *   "Request Approval": (Visible for critical statuses like 'Stockout' or 'Below Safety', if workflow configured) Triggers notification/activity for Inventory Manager.
-*   **Business Rules/Logic:**
-    *   Users can add notes to explain decisions or context regarding inventory status.
-    *   Flagging `inventory_exception` indicates manual intervention or override occurred.
-    *   If an approval workflow is configured:
-        *   Triggering "Request Approval" may set the `pending_approval` flag on the session or create activities assigned to the relevant approval role.
-        *   The main "Approve Inventory" action (FR-SCM-006) might be blocked until `pending_approval` is false or specific approvals are logged.
-*   **Data Handling:**
-    *   Input: User comments, exception flags.
-    *   Processing: Update corresponding fields on `scm_consolidated_pr_line`. Trigger notification/activity system if approval requested.
-    *   Output: Updated `inventory_notes`, `inventory_exception` fields on `scm_consolidated_pr_line`. Potentially update `pending_approval` on `scm_pr_consolidation_session`. Creation of `mail.activity` records.
-*   **Preconditions:**
-    *   The `scm_pr_consolidation_session` record exists and its `state` is 'Inventory Validation'.
-    *   Inventory check (FR-SCM-004) has been completed.
-    *   User has permission to edit `scm_consolidated_pr_line` records or use the review interface.
-*   **Postconditions:**
-    *   Notes and exception flags are saved on relevant `scm_consolidated_pr_line` records.
-    *   Approval requests are initiated if applicable.
-*   **Error Handling/Alternative Flows:**
-    *   Ensure concurrent edits are handled correctly if multiple users review simultaneously (standard Odoo locking).
-
----
-
-#### **FR-SCM-006: Approve Inventory Validation**
-
-*   **Source:** High-Level Req. Phase 2.2
-*   **Priority:** High
-*   **Description:** The system shall allow an authorized user to formally approve the inventory validation stage for a consolidation session, signifying that all checks are complete, exceptions handled (or approved), and the data is ready for purchase order generation (Phase 3).
-*   **User Interface (UI) Description:**
-    *   A button (e.g., "Approve Inventory") shall be visible and enabled on the `scm_pr_consolidation_session` form view when the record `state` is 'Inventory Validation'.
-    *   This button might be conditionally visible/enabled based on user role (e.g., Inventory Manager if `pending_approval` is true) or always available to Procurement Officer if no critical issues required separate approval.
-    *   Clicking the button triggers the final approval.
-    *   Upon successful completion, the `state` in the status bar changes to 'Approved'.
-*   **Business Rules/Logic:**
-    *   The system must check if the current state is 'Inventory Validation'.
-    *   The system may optionally check if `pending_approval` is false before allowing the final approval (if approval workflows are implemented).
-*   **Data Handling:**
-    *   Input: `scm_pr_consolidation_session` record ID.
-    *   Processing: Verify current state and potentially approval status.
-    *   Output: Update the `scm_pr_consolidation_session` record:
-        *   Set `state` to `'approved'`.
-        *   Set `inventory_validated` to `True`.
-        *   Set `inventory_validation_date` to the current timestamp.
-        *   Set `inventory_validated_by` to the current user's ID.
-        *   Set `pending_approval` to `False`.
-*   **Preconditions:**
-    *   The `scm_pr_consolidation_session` record exists and its `state` is 'Inventory Validation'.
-    *   All necessary exception reviews (FR-SCM-005) have been completed.
-    *   Any required manager approvals for critical items have been granted.
-    *   User has permission to execute the final inventory approval action/method.
-*   **Postconditions:**
-    *   The `scm_pr_consolidation_session` record's `state` is updated to 'Approved'.
-    *   Inventory validation details (`inventory_validated`, `inventory_validation_date`, `inventory_validated_by`) are recorded.
-    *   The session is now ready for Phase 3 (PO Generation).
-*   **Error Handling/Alternative Flows:**
-    *   If the state is not 'Inventory Validation', prevent the action.
-    *   If pending approvals exist (and the workflow requires them), prevent the action and display a message indicating approvals are needed.
-
---- 
+        *   Create new records in `scm_consolidated_pr_line` with calculated `total_quantity`, `earliest_date_required`, linked `product_id`, `
