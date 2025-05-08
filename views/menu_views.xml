@@ -27,7 +27,7 @@
     <menuitem id="menu_scm_consolidated_lines"
               name="PR Consolidated Lines"
               parent="menu_scm_consolidation"
-              action="scm_procurement.action_pr_consolidated_lines"
+              action="action_pr_consolidated_lines"
               sequence="30"/>
 
     <!-- Purchase Requests submenu -->

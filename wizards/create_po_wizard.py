@@ -23,13 +23,13 @@ class CreatePOWizard(models.TransientModel):
     total_products = fields.Integer(compute='_compute_summary', store=True)
     total_amount = fields.Monetary(compute='_compute_summary', store=True, currency_field='currency_id')
 
-    @api.depends('line_ids', 'line_ids.vendor_id', 'line_ids.product_id', 'line_ids.quantity_to_purchase', 'line_ids.price_unit')
+    @api.depends('line_ids', 'line_ids.vendor_id', 'line_ids.product_id', 'line_ids.product_qty', 'line_ids.price_unit')
     def _compute_summary(self):
         for wizard in self:
             wizard.total_lines = len(wizard.line_ids)
             wizard.total_vendors = len(wizard.line_ids.mapped('vendor_id'))
             wizard.total_products = len(wizard.line_ids.mapped('product_id'))
-            wizard.total_amount = sum(line.quantity_to_purchase * line.price_unit for line in wizard.line_ids if line.price_unit)
+            wizard.total_amount = sum(line.product_qty * line.price_unit for line in wizard.line_ids if line.price_unit)
 
     @api.model
     def create(self, vals):
@@ -64,25 +64,30 @@ class CreatePOWizard(models.TransientModel):
         res = super().default_get(fields_list)
         if self.env.context.get('active_model') == 'scm.pr.consolidation.session':
             consolidation = self.env['scm.pr.consolidation.session'].browse(self.env.context.get('active_id'))
-            if consolidation:
+            if consolidation.exists():
                 # Get lines with quantity to purchase > 0
                 lines_to_purchase = consolidation.consolidated_line_ids.filtered(lambda l: l.quantity_to_purchase > 0)
                 
                 wizard_lines = []
                 for line in lines_to_purchase:
-                    if not line.product_id:
+                    if not line.product_id.exists():
                         continue
                     
                     # Ensure product_uom_id is set
-                    product_uom_id = line.product_uom_id.id if line.product_uom_id else line.product_id.uom_id.id
+                    product_uom_id = line.product_uom_id.id if line.product_uom_id.exists() else line.product_id.uom_id.id
+                    
+                    # Get vendor ID safely
+                    vendor_id = False
+                    if line.suggested_vendor_id.exists():
+                        vendor_id = line.suggested_vendor_id.id
                     
                     wizard_lines.append((0, 0, {
                         'consolidated_line_id': line.id,
                         'product_id': line.product_id.id,
                         'product_uom_id': product_uom_id,
-                        'quantity_to_purchase': line.quantity_to_purchase,
-                        'price_unit': line.purchase_price,
-                        'vendor_id': line.suggested_vendor_id.id if line.suggested_vendor_id else False,
+                        'product_qty': line.quantity_to_purchase,
+                        'price_unit': line.purchase_price or 0.0,
+                        'vendor_id': vendor_id,
                     }))
                 
                 res.update({
@@ -101,15 +106,20 @@ class CreatePOWizard(models.TransientModel):
                 
             # First try to find a vendor from active agreements
             agreements = self.env['purchase.requisition'].search([
-                ('state', 'in', ['ongoing', 'open']),
+                ('state', 'in', ['active', 'done']),
+                ('date_end', '>=', fields.Date.today()),
                 ('line_ids.product_id', '=', line.product_id.id)
             ])
             
             if agreements:
                 # Take the most recent agreement's vendor
                 latest_agreement = agreements.sorted(lambda a: a.create_date, reverse=True)[0]
-                line.vendor_id = latest_agreement.vendor_id.id
-                continue
+                if latest_agreement.vendor_id.exists():
+                    line.write({
+                        'vendor_id': latest_agreement.vendor_id.id,
+                        'agreement_id': latest_agreement.id
+                    })
+                    continue
             
             # If no agreement found, try to find from purchase history
             purchase_lines = self.env['purchase.order.line'].search([
@@ -117,8 +127,10 @@ class CreatePOWizard(models.TransientModel):
                 ('order_id.state', 'in', ['purchase', 'done'])
             ], order='create_date desc', limit=1)
             
-            if purchase_lines:
-                line.vendor_id = purchase_lines.order_id.partner_id.id
+            if purchase_lines and purchase_lines.order_id.partner_id.exists():
+                line.write({
+                    'vendor_id': purchase_lines.order_id.partner_id.id
+                })
 
         return {'type': 'ir.actions.act_window_close'}
 
@@ -151,8 +163,8 @@ class CreatePOWizard(models.TransientModel):
             for line in lines:
                 po_line_vals = {
                     'product_id': line.product_id.id,
-                    'name': line.product_id.display_name,
-                    'product_uom_qty': line.quantity_to_purchase,
+                    'name': line.name or line.product_id.display_name,
+                    'product_uom_qty': line.product_qty,
                     'product_uom': line.product_uom_id.id,
                     'price_unit': line.price_unit,
                     'date_planned': self.date_order,
@@ -216,117 +228,126 @@ class CreatePOWizardLine(models.TransientModel):
     _name = 'scm.create.po.wizard.line'
     _description = 'Create Purchase Order Wizard Line'
 
-    wizard_id = fields.Many2one('scm.create.po.wizard', string='Wizard', required=True, ondelete='cascade')
-    consolidated_line_id = fields.Many2one('scm.consolidated.pr.line', string='Consolidated Line', required=True)
-    product_id = fields.Many2one('product.product', string='Product', required=True, default=lambda self: self.env.context.get('default_product_id'))
-    product_uom_id = fields.Many2one('uom.uom', string='Unit of Measure', required=True, default=lambda self: self._get_default_uom())
-    quantity_to_purchase = fields.Float(string='Quantity to Purchase', digits='Product Unit of Measure')
-    price_unit = fields.Float(string='Unit Price', digits='Product Price')
-    vendor_id = fields.Many2one('res.partner', string='Vendor', required=True, domain="[('supplier_rank', '>', 0)]")
-    agreement_id = fields.Many2one('purchase.requisition', string='Agreement', domain="[('id', 'in', suggested_agreement_ids)]")
-    requisition_line_id = fields.Many2one('purchase.requisition.line', string='Agreement Line')
-    suggested_agreement_ids = fields.Many2many(
-        'purchase.requisition', 
-        string='Suggested Agreements',
-        compute='_compute_suggested_agreements',
+    wizard_id = fields.Many2one(
+        'scm.create.po.wizard',
+        string='Wizard',
+        required=True,
+        ondelete='cascade'
+    )
+    consolidated_line_id = fields.Many2one(
+        'scm.consolidated.pr.line',
+        string='Consolidated Line',
+        required=True
+    )
+    product_id = fields.Many2one(
+        'product.product',
+        string='Product',
+        required=True
+    )
+    name = fields.Text(
+        string='Description',
+        required=True
+    )
+    product_qty = fields.Float(
+        string='Quantity',
+        required=True,
+        default=0.0
+    )
+    product_uom_id = fields.Many2one(
+        'uom.uom',
+        string='Unit of Measure',
+        required=True
+    )
+    price_unit = fields.Float(
+        string='Unit Price',
+        required=True,
+        default=0.0
+    )
+    price_subtotal = fields.Float(
+        string='Subtotal',
+        compute='_compute_price_subtotal',
         store=True
     )
-    agreement_count = fields.Integer(
-        string='Available Agreements',
-        compute='_compute_suggested_agreements',
-        store=True
+    vendor_id = fields.Many2one(
+        'res.partner',
+        string='Vendor',
+        domain="[('supplier_rank', '>', 0)]"
     )
-    has_agreements = fields.Boolean(
-        string='Has Agreements',
-        compute='_compute_suggested_agreements',
-        store=True
+    agreement_id = fields.Many2one(
+        'purchase.requisition',
+        string='Purchase Agreement',
+        domain="[('state', 'in', ['ongoing']), '|', ('date_end', '=', False), ('date_end', '>=', context_today().strftime('%Y-%m-%d'))]"
     )
-    
-    @api.depends('product_id', 'vendor_id')
-    def _compute_suggested_agreements(self):
+    agreement_line_id = fields.Many2one(
+        'purchase.requisition.line',
+        string='Agreement Line',
+        domain="[('requisition_id', '=', agreement_id)]"
+    )
+
+    @api.depends('product_qty', 'price_unit')
+    def _compute_price_subtotal(self):
         for line in self:
-            if not line.product_id:
-                line.suggested_agreement_ids = False
-                line.agreement_count = 0
-                line.has_agreements = False
-                continue
+            line.price_subtotal = line.product_qty * line.price_unit
 
-            _logger.info(f'Finding agreements for product: {line.product_id.display_name}')
+    @api.onchange('vendor_id', 'product_id')
+    def _onchange_vendor_or_product(self):
+        domain = []
+        warning = {}
+        if self.vendor_id and self.product_id:
+            agreements = self.env['purchase.requisition'].search([
+                ('state', 'in', ['ongoing']),
+                '|', ('date_end', '=', False), ('date_end', '>=', fields.Date.today()),
+                ('vendor_id', '=', self.vendor_id.id),
+                ('line_ids.product_id', '=', self.product_id.id),
+            ])
+            if not agreements:
+                warning = {
+                    'title': "No Blanket Agreement",
+                    'message': "There is no ongoing blanket agreement for this vendor and product. You can proceed without an agreement."
+                }
+            domain = [('id', 'in', agreements.ids)]
+        return {
+            'domain': {'agreement_id': domain},
+            'warning': warning
+        }
 
-            # First find all agreements that have this product in their lines
-            domain = [
-                ('product_id', '=', line.product_id.id),
-            ]
-            
-            # Add condition for end date: either no end date or end date >= today
-            today = fields.Date.today()
-            domain.append('|')
-            domain.append(('requisition_id.date_end', '=', False))
-            domain.append(('requisition_id.date_end', '>=', today))
-            
-            requisition_lines = self.env['purchase.requisition.line'].search(domain)
-            agreements = requisition_lines.mapped('requisition_id')
-            
-            # If vendor is selected, filter agreements by vendor
-            if line.vendor_id:
-                agreements = agreements.filtered(lambda a: a.vendor_id == line.vendor_id)
-            
-            _logger.info(f'Found {len(agreements)} valid agreements for product {line.product_id.display_name}')
-            if agreements:
-                _logger.info(f'Agreement vendors: {agreements.mapped("vendor_id.name")}')
-            
-            line.suggested_agreement_ids = agreements
-            line.agreement_count = len(agreements)
-            line.has_agreements = bool(agreements)
-            
-            # If there's only one agreement and no agreement selected yet, select it
-            if len(agreements) == 1 and not line.agreement_id:
-                line.agreement_id = agreements.id
-                line._onchange_agreement_id()
-    
     @api.onchange('agreement_id')
     def _onchange_agreement_id(self):
-        if self.agreement_id:
-            # Set the vendor from the agreement if not set
-            if not self.vendor_id:
-                self.vendor_id = self.agreement_id.vendor_id.id
-            
-            if self.product_id:
-                # Find matching line in the agreement
-                requisition_line = self.env['purchase.requisition.line'].search([
-                    ('requisition_id', '=', self.agreement_id.id),
-                    ('product_id', '=', self.product_id.id)
-                ], limit=1)
-                
-                if requisition_line:
-                    self.requisition_line_id = requisition_line.id
-                    self.price_unit = requisition_line.price_unit
-                else:
-                    self.requisition_line_id = False
+        if self.agreement_id and self.product_id:
+            agreement_line = self.env['purchase.requisition.line'].search([
+                ('requisition_id', '=', self.agreement_id.id),
+                ('product_id', '=', self.product_id.id)
+            ], limit=1)
+            if agreement_line:
+                self.agreement_line_id = agreement_line.id
+                self.price_unit = agreement_line.price_unit
+            else:
+                self.agreement_line_id = False
         else:
-            self.requisition_line_id = False
-    
+            self.agreement_line_id = False
+
     @api.onchange('vendor_id')
     def _onchange_vendor_id(self):
         if self.vendor_id:
-            # Recompute suggested agreements when vendor changes
-            self._compute_suggested_agreements()
-            
             # Clear agreement if vendor doesn't match
             if self.agreement_id and self.agreement_id.vendor_id != self.vendor_id:
                 self.agreement_id = False
-                self.requisition_line_id = False
-    
+                self.agreement_line_id = False
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
         if self.env.context.get('default_consolidated_line_id'):
-            consolidated_line = self.env['scm.consolidated.pr.line'].browse(self.env.context.get('default_consolidated_line_id'))
-            if consolidated_line:
+            consolidated_line = self.env['scm.consolidated.pr.line'].browse(
+                self.env.context.get('default_consolidated_line_id')
+            )
+            if consolidated_line.exists():
                 _logger.info(f'Initializing wizard line for product {consolidated_line.product_id.display_name}')
                 
                 # Get suggested vendor from consolidated line
-                vendor_id = consolidated_line.suggested_vendor_id.id if consolidated_line.suggested_vendor_id else False
+                vendor_id = False
+                if consolidated_line.suggested_vendor_id.exists():
+                    vendor_id = consolidated_line.suggested_vendor_id.id
                 
                 # If no suggested vendor, try to find one from agreements
                 if not vendor_id:
@@ -337,12 +358,15 @@ class CreatePOWizardLine(models.TransientModel):
                     ])
                     
                     for agreement in agreements:
+                        if not agreement.exists():
+                            continue
+                            
                         requisition_line = self.env['purchase.requisition.line'].search([
                             ('requisition_id', '=', agreement.id),
                             ('product_id', '=', consolidated_line.product_id.id)
                         ], limit=1)
                         
-                        if requisition_line:
+                        if requisition_line and agreement.vendor_id.exists():
                             vendor_id = agreement.vendor_id.id
                             _logger.info(f'Found vendor {agreement.vendor_id.name} from agreement {agreement.name}')
                             break
@@ -350,36 +374,24 @@ class CreatePOWizardLine(models.TransientModel):
                 res.update({
                     'consolidated_line_id': consolidated_line.id,
                     'product_id': consolidated_line.product_id.id,
-                    'product_uom_id': consolidated_line.product_uom_id.id,
-                    'quantity_to_purchase': consolidated_line.quantity_to_purchase,
-                    'price_unit': consolidated_line.purchase_price,
+                    'name': consolidated_line.name or '',
+                    'product_uom_id': consolidated_line.product_uom_id.id if consolidated_line.product_uom_id.exists() else consolidated_line.product_id.uom_id.id,
+                    'product_qty': consolidated_line.quantity_to_purchase or 0.0,
+                    'price_unit': consolidated_line.purchase_price or 0.0,
                     'vendor_id': vendor_id,
                 })
                 
                 _logger.info(f'Initialized wizard line with vendor_id: {vendor_id}')
         elif self.env.context.get('default_product_id'):
             # Fallback to default_product_id from context if no consolidated line
-            res['product_id'] = self.env.context.get('default_product_id')
-        return res
-
-    @api.model
-    def _get_default_uom(self):
-        """Get default UoM from consolidated line or product."""
-        if self.env.context.get('default_consolidated_line_id'):
-            consolidated_line = self.env['scm.consolidated.pr.line'].browse(
-                self.env.context.get('default_consolidated_line_id')
-            )
-            if consolidated_line and consolidated_line.product_uom_id:
-                return consolidated_line.product_uom_id.id
-        
-        # If no consolidated line or no UoM in consolidated line, try to get from product
-        if self.env.context.get('default_product_id'):
             product = self.env['product.product'].browse(self.env.context.get('default_product_id'))
-            if product and product.uom_id:
-                return product.uom_id.id
-        
-        # Fallback to default purchase UoM
-        return self.env['product.product']._get_default_uom_id()
+            if product.exists():
+                res.update({
+                    'product_id': product.id,
+                    'name': product.name or '',
+                    'product_uom_id': product.uom_id.id if product.uom_id.exists() else False,
+                })
+        return res
 
 
 class NoPONeededWizard(models.TransientModel):

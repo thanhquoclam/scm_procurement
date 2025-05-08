@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Impact Assessment Notification Template -->
+    <record id="mail_template_consolidation_change_impact" model="mail.template">
+        <field name="name">Consolidation Change Impact Assessment</field>
+        <field name="model_id" ref="model_scm_consolidation_change_log"/>
+        <field name="subject">Impact Assessment: {{ object.name }} - {{ object.change_type }} Change</field>
+        <field name="email_from">{{ user.email_formatted }}</field>
+        <field name="partner_to">{{ object.consolidation_id.user_id.partner_id.id }}</field>
+        <field name="body_html" type="html">
+            <div style="margin: 0px; padding: 0px;">
+                <p>Hello,</p>
+                <p>A change has been detected in the consolidation session <strong>{{ object.consolidation_id.name }}</strong>.</p>
+                <p><strong>Change Details:</strong></p>
+                <ul>
+                    <li>Type: {{ object.change_type }}</li>
+                    <li>Subtype: {{ object.change_subtype }}</li>
+                    <li>Record: {{ object.record_name }}</li>
+                    <li>Impact Severity: {{ object.impact_severity }}</li>
+                </ul>
+                <p><strong>Change Values:</strong></p>
+                <ul>
+                    <li>Old Value: {{ object.old_value }}</li>
+                    <li>New Value: {{ object.new_value }}</li>
+                </ul>
+                <p>Please review this change and take appropriate action.</p>
+                <p>You can access the change log directly by clicking <a href="{{ object.get_base_url() }}/web#id={{ object.id }}&amp;model=scm.consolidation.change.log&amp;view_type=form">here</a>.</p>
+                <p>Best regards,<br/>{{ user.name }}</p>
+            </div>
+        </field>
+        <field name="lang">{{ object.consolidation_id.user_id.lang }}</field>
+        <field name="auto_delete" eval="True"/>
+    </record>
+
+    <!-- Resolution Notification Template -->
+    <record id="mail_template_consolidation_change_resolved" model="mail.template">
+        <field name="name">Consolidation Change Resolved</field>
+        <field name="model_id" ref="model_scm_consolidation_change_log"/>
+        <field name="subject">Resolved: {{ object.name }} - {{ object.change_type }} Change</field>
+        <field name="email_from">{{ user.email_formatted }}</field>
+        <field name="partner_to">{{ object.consolidation_id.user_id.partner_id.id }}</field>
+        <field name="body_html" type="html">
+            <div style="margin: 0px; padding: 0px;">
+                <p>Hello,</p>
+                <p>The change in consolidation session <strong>{{ object.consolidation_id.name }}</strong> has been resolved.</p>
+                <p><strong>Change Details:</strong></p>
+                <ul>
+                    <li>Type: {{ object.change_type }}</li>
+                    <li>Subtype: {{ object.change_subtype }}</li>
+                    <li>Record: {{ object.record_name }}</li>
+                    <li>Impact Severity: {{ object.impact_severity }}</li>
+                </ul>
+                <p><strong>Resolution Details:</strong></p>
+                <ul>
+                    <li>Resolved By: {{ object.resolved_by.name }}</li>
+                    <li>Resolution Date: {{ object.resolved_date }}</li>
+                    <li>Resolution Notes: {{ object.resolution_notes }}</li>
+                </ul>
+                <p>You can view the complete change log by clicking <a href="{{ object.get_base_url() }}/web#id={{ object.id }}&amp;model=scm.consolidation.change.log&amp;view_type=form">here</a>.</p>
+                <p>Best regards,<br/>{{ user.name }}</p>
+            </div>
+        </field>
+        <field name="lang">{{ object.consolidation_id.user_id.lang }}</field>
+        <field name="auto_delete" eval="True"/>
+    </record>
+</odoo> 

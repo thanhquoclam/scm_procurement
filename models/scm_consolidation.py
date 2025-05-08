@@ -459,7 +459,7 @@ class PRConsolidationSession(models.Model):
                     'consolidated_line_id': line.id,
                     'product_id': line.product_id.id,
                     'product_uom_id': line.product_uom_id.id,
-                    'quantity_to_purchase': line.quantity_to_purchase,
+                    'product_qty': line.quantity_to_purchase,
                     'price_unit': line.purchase_price,
                     'vendor_id': line.suggested_vendor_id.id if line.suggested_vendor_id else False,
                 }) for line in self.consolidated_line_ids.filtered(lambda l: l.quantity_to_purchase > 0)]
@@ -491,7 +491,7 @@ class PRConsolidationSession(models.Model):
                 'consolidated_line_id': line.id,
                 'product_id': line.product_id.id,
                 'product_uom_id': line.product_uom_id.id,
-                'quantity_to_purchase': line.quantity_to_purchase,
+                'product_qty': line.quantity_to_purchase,
                 'price_unit': line.purchase_price,
                 'vendor_id': line.suggested_vendor_id.id if line.suggested_vendor_id else False,
             }))

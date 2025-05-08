@@ -445,6 +445,272 @@
             4. Create user interface elements
             5. Implement validation rules
 
+**3.4. Change Management Process (Phase 4)**
+
+*   **FR-CM-001: Detect Changes in PRs**
+
+    *   **Source:** High-Level Req. Phase 4.1
+    *   **Priority:** High
+    *   **Description:** The system shall automatically detect changes in Purchase Requests that affect the current consolidation session.
+    *   **User Interface (UI) Description:**
+        *   A dedicated tab "Change Log" in the consolidation session form view
+        *   Change log entries showing:
+            *   Type of change (PR Added/Modified/Deleted)
+            *   Date and time of change
+            *   User who made the change
+            *   Impact assessment
+            *   Status of the change
+        *   Filter options for change types and status
+    *   **Business Rules/Logic:**
+        *   Monitor PRs linked to the consolidation session
+        *   Detect changes in:
+            *   PR quantities
+            *   PR status
+            *   PR dates
+            *   PR line additions/deletions
+        *   Calculate impact on consolidation totals
+        *   Update affected consolidated lines
+    *   **Data Handling:**
+        *   Input: Changes in PR data
+        *   Processing: 
+            *   Detect changes
+            *   Calculate impact
+            *   Create change log entry
+            *   Update consolidation data
+        *   Output: Updated consolidation data and change log entries
+    *   **Preconditions:**
+        *   Consolidation session exists
+        *   PRs are linked to the session
+        *   User has permission to view changes
+    *   **Postconditions:**
+        *   Change is logged
+        *   Consolidation data is updated
+        *   Impact is assessed
+        *   Team is notified
+
+*   **FR-CM-002: Detect Changes in Inventory**
+
+    *   **Source:** High-Level Req. Phase 4.2
+    *   **Priority:** High
+    *   **Description:** The system shall monitor and detect changes in inventory levels that affect the current consolidation session.
+    *   **User Interface (UI) Description:**
+        *   Change log entries for inventory changes
+        *   Visual indicators for critical stock changes
+        *   Impact assessment view
+        *   Options to revalidate inventory
+    *   **Business Rules/Logic:**
+        *   Monitor stock levels for products in consolidation
+        *   Detect changes in:
+            *   Available quantity
+            *   Reserved quantity
+            *   Incoming quantity
+        *   Trigger revalidation if impact is significant
+        *   Update inventory status of affected lines
+    *   **Data Handling:**
+        *   Input: Stock movement data
+        *   Processing:
+            *   Compare new stock levels
+            *   Calculate impact
+            *   Create change log
+            *   Update inventory status
+        *   Output: Updated inventory data and change log
+    *   **Preconditions:**
+        *   Consolidation session exists
+        *   Products have stock information
+        *   User has permission to view inventory
+    *   **Postconditions:**
+        *   Change is logged
+        *   Inventory status is updated
+        *   Impact is assessed
+        *   Team is notified
+
+*   **FR-CM-003: Detect Changes in Purchase Orders**
+
+    *   **Source:** High-Level Req. Phase 4.3
+    *   **Priority:** High
+    *   **Description:** The system shall monitor changes in Purchase Orders created from the consolidation session.
+    *   **User Interface (UI) Description:**
+        *   Change log entries for PO changes
+        *   PO status tracking
+        *   Impact on PR fulfillment
+        *   Options to update fulfillment plans
+    *   **Business Rules/Logic:**
+        *   Monitor POs linked to consolidation
+        *   Detect changes in:
+            *   PO status
+            *   PO quantities
+            *   Delivery dates
+            *   PO cancellations
+        *   Update PR fulfillment plans
+        *   Recalculate delivery timelines
+    *   **Data Handling:**
+        *   Input: PO change data
+        *   Processing:
+            *   Detect PO changes
+            *   Update fulfillment plans
+            *   Create change log
+            *   Recalculate timelines
+        *   Output: Updated fulfillment data and change log
+    *   **Preconditions:**
+        *   Consolidation session exists
+        *   POs are created from session
+        *   User has permission to view POs
+    *   **Postconditions:**
+        *   Change is logged
+        *   Fulfillment plans are updated
+        *   Impact is assessed
+        *   Team is notified
+
+*   **FR-CM-004: Impact Assessment**
+
+    *   **Source:** High-Level Req. Phase 4.4
+    *   **Priority:** High
+    *   **Description:** The system shall assess and communicate the impact of changes on the consolidation session and related processes.
+    *   **User Interface (UI) Description:**
+        *   Impact assessment dashboard
+        *   Visual indicators for impact severity
+        *   Detailed impact reports
+        *   Action recommendation panel
+    *   **Business Rules/Logic:**
+        *   Calculate impact on:
+            *   Total quantities
+            *   Delivery timelines
+            *   Purchase costs
+            *   PR fulfillment
+        *   Categorize impact severity
+        *   Generate action recommendations
+        *   Prioritize required actions
+    *   **Data Handling:**
+        *   Input: Change data and current state
+        *   Processing:
+            *   Calculate impact metrics
+            *   Generate recommendations
+            *   Update impact assessment
+            *   Create notifications
+        *   Output: Impact assessment and recommendations
+    *   **Preconditions:**
+        *   Change is detected
+        *   Current state is known
+        *   User has permission to view impact
+    *   **Postconditions:**
+        *   Impact is assessed
+        *   Recommendations are generated
+        *   Team is notified
+        *   Action plan is created
+
+*   **FR-CM-005: Change Resolution**
+
+    *   **Source:** High-Level Req. Phase 4.5
+    *   **Priority:** High
+    *   **Description:** The system shall provide tools and workflows for resolving detected changes and updating the consolidation session accordingly.
+    *   **User Interface (UI) Description:**
+        *   Change resolution wizard
+        *   Action tracking interface
+        *   Resolution status updates
+        *   History of resolutions
+    *   **Business Rules/Logic:**
+        *   Guide users through resolution steps
+        *   Track resolution progress
+        *   Update consolidation data
+        *   Maintain resolution history
+        *   Close change records when resolved
+    *   **Data Handling:**
+        *   Input: Resolution actions
+        *   Processing:
+            *   Apply changes
+            *   Update status
+            *   Record actions
+            *   Notify stakeholders
+        *   Output: Updated consolidation data and resolution records
+    *   **Preconditions:**
+        *   Change is detected
+        *   Impact is assessed
+        *   User has permission to resolve changes
+    *   **Postconditions:**
+        *   Changes are resolved
+        *   Consolidation is updated
+        *   Resolution is documented
+        *   Status is updated
+
+*   **FR-CM-006: Change Notification System**
+
+    *   **Source:** High-Level Req. Phase 4.6
+    *   **Priority:** Medium
+    *   **Description:** The system shall notify relevant stakeholders about detected changes and required actions.
+    *   **User Interface (UI) Description:**
+        *   Notification center
+        *   Email notification settings
+        *   In-app notification panel
+        *   Notification history
+    *   **Business Rules/Logic:**
+        *   Define notification rules
+        *   Determine notification recipients
+        *   Set notification priorities
+        *   Track notification status
+        *   Allow notification preferences
+    *   **Data Handling:**
+        *   Input: Change data and user preferences
+        *   Processing:
+            *   Generate notifications
+            *   Send to recipients
+            *   Track delivery
+            *   Record responses
+        *   Output: Notifications and delivery status
+    *   **Preconditions:**
+        *   Change is detected
+        *   Impact is assessed
+        *   Notification rules are configured
+    *   **Postconditions:**
+        *   Notifications are sent
+        *   Delivery is tracked
+        *   Responses are recorded
+        *   Status is updated
+
+*   **FR-CM-007: Change History and Reporting**
+
+    *   **Source:** High-Level Req. Phase 4.7
+    *   **Priority:** Medium
+    *   **Description:** The system shall maintain a comprehensive history of changes and provide reporting capabilities.
+    *   **User Interface (UI) Description:**
+        *   Change history view
+        *   Reporting dashboard
+        *   Export options
+        *   Filter and search capabilities
+    *   **Business Rules/Logic:**
+        *   Record all changes
+        *   Track resolution status
+        *   Calculate change metrics
+        *   Generate reports
+        *   Support data export
+    *   **Data Handling:**
+        *   Input: Change and resolution data
+        *   Processing:
+            *   Aggregate history
+            *   Calculate metrics
+            *   Generate reports
+            *   Prepare exports
+        *   Output: History records and reports
+    *   **Preconditions:**
+        *   Changes are recorded
+        *   User has permission to view history
+    *   **Postconditions:**
+        *   History is maintained
+        *   Reports are generated
+        *   Data is available for export
+        *   Metrics are calculated
+
+**Implementation Status (April 2025):**
+
+*   **FR-CM-001 to FR-CM-003:** These requirements have been implemented with the change detection system. The system can detect changes in PRs, inventory levels, and POs, and create appropriate change log entries.
+
+*   **FR-CM-004:** The impact assessment functionality is implemented but needs refinement in the recommendation engine and impact calculation algorithms.
+
+*   **FR-CM-005:** The change resolution workflow is implemented with basic functionality. Additional features for complex resolution scenarios are planned.
+
+*   **FR-CM-006:** The notification system is implemented with basic email and in-app notifications. Advanced notification rules and preferences are still being developed.
+
+*   **FR-CM-007:** Basic change history and reporting are implemented. Advanced reporting features and metrics are planned for future releases.
+
 ---
 
 #### **FR-SCM-001: Create New Consolidation Session**

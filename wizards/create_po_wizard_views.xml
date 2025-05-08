@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_create_po_wizard_form" model="ir.ui.view">
+        <field name="name">scm.create.po.wizard.form</field>
+        <field name="model">scm.create.po.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Create Purchase Orders">
+                <header>
+                    <button name="action_auto_assign_vendors" type="object" string="Auto Assign Vendors" class="btn-primary"/>
+                    <button name="action_create_pos" type="object" string="Create Purchase Orders" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <group>
+                        <field name="consolidation_id" readonly="1"/>
+                        <field name="date_order"/>
+                        <field name="currency_id"/>
+                        <field name="notes"/>
+                    </group>
+                    <notebook>
+                        <page string="Lines">
+                            <field name="line_ids">
+                                <tree editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="name"/>
+                                    <field name="product_qty"/>
+                                    <field name="product_uom_id"/>
+                                    <field name="price_unit"/>
+                                    <field name="price_subtotal"/>
+                                    <field name="vendor_id"/>
+                                    <field name="agreement_id"/>
+                                    <field name="agreement_line_id"/>
+                                </tree>
+                                <form>
+                                    <group>
+                                        <field name="consolidated_line_id" required="1"/>
+                                        <field name="product_id"/>
+                                        <field name="name"/>
+                                        <field name="product_qty"/>
+                                        <field name="product_uom_id"/>
+                                        <field name="price_unit"/>
+                                        <field name="price_subtotal" readonly="1"/>
+                                        <field name="vendor_id"/>
+                                        <field name="agreement_id"/>
+                                        <field name="agreement_line_id"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo> 

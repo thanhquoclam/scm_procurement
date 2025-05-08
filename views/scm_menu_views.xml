@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main Menu -->
+    <menuitem id="menu_scm_root" 
+              name="SCM" 
+              sequence="10"/>
+
+    <!-- Consolidation Menu -->
+    <menuitem id="menu_consolidation_root" 
+              name="Consolidation" 
+              parent="menu_scm_root" 
+              sequence="10"/>
+
+    <menuitem id="menu_consolidation_session" 
+              name="Sessions" 
+              parent="menu_consolidation_root" 
+              action="action_scm_consolidation" 
+              sequence="10"/>
+
+    <menuitem id="menu_consolidation_create" 
+              name="Create Session" 
+              parent="menu_consolidation_root" 
+              action="action_open_create_consolidation_wizard" 
+              sequence="20"/>
+
+    <!-- Link to Purchase Request Menu -->
+    <menuitem id="menu_purchase_request_root" 
+              name="Purchase Requests" 
+              parent="menu_scm_root" 
+              action="purchase_request.purchase_request_form_action"
+              sequence="20"/>
+
+    <!-- Link to Purchase Order Menu -->
+    <menuitem id="menu_purchase_order_root" 
+              name="Purchase Orders" 
+              parent="menu_scm_root" 
+              action="purchase.purchase_form_action"
+              sequence="30"/>
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_scm_configuration" 
+              name="Configuration" 
+              parent="menu_scm_root" 
+              sequence="100"/>
+</odoo> 

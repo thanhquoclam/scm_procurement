@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Forecast Template Form View -->
+    <record id="view_scm_forecast_template_form" model="ir.ui.view">
+        <field name="name">scm.forecast.template.form</field>
+        <field name="model">scm.forecast.template</field>
+        <field name="arch" type="xml">
+            <form string="Forecast Template">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Template Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="active" widget="boolean_toggle"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="product_id"/>
+                            <field name="product_category_id" invisible="1"/>
+                            <field name="warehouse_id"/>
+                        </group>
+                        <group>
+                            <field name="forecast_method"/>
+                            <field name="forecast_period"/>
+                            <field name="seasonality_factor"/>
+                            <field name="trend_factor"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Historical Data">
+                            <field name="historical_data_ids" widget="one2many">
+                                <tree editable="bottom">
+                                    <field name="date"/>
+                                    <field name="quantity"/>
+                                    <field name="uom_id" groups="uom.group_uom"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Forecast Parameters">
+                            <group>
+                                <group string="Moving Average">
+                                    <field name="ma_period"/>
+                                    <field name="ma_weight"/>
+                                </group>
+                                <group string="Exponential Smoothing">
+                                    <field name="alpha"/>
+                                    <field name="beta"/>
+                                    <field name="gamma"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids" widget="mail_followers"/>
+                    <field name="message_ids" widget="mail_thread"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Forecast Template Tree View -->
+    <record id="view_scm_forecast_template_tree" model="ir.ui.view">
+        <field name="name">scm.forecast.template.tree</field>
+        <field name="model">scm.forecast.template</field>
+        <field name="arch" type="xml">
+            <tree string="Forecast Templates">
+                <field name="name"/>
+                <field name="product_id"/>
+                <field name="product_category_id"/>
+                <field name="warehouse_id"/>
+                <field name="forecast_method"/>
+                <field name="forecast_period"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Forecast Template Search View -->
+    <record id="view_scm_forecast_template_search" model="ir.ui.view">
+        <field name="name">scm.forecast.template.search</field>
+        <field name="model">scm.forecast.template</field>
+        <field name="arch" type="xml">
+            <search string="Search Forecast Templates">
+                <field name="name"/>
+                <field name="product_id"/>
+                <field name="product_category_id"/>
+                <field name="warehouse_id"/>
+                <separator/>
+                <filter string="Product Templates" name="product_templates" domain="[('product_id', '!=', False)]"/>
+                <filter string="Category Templates" name="category_templates" domain="[('product_category_id', '!=', False), ('product_id', '=', False)]"/>
+                <filter string="Default Templates" name="default_templates" domain="[('product_id', '=', False), ('product_category_id', '=', False)]"/>
+                <separator/>
+                <filter string="Moving Average" name="moving_average" domain="[('forecast_method', '=', 'ma')]"/>
+                <filter string="Exponential Smoothing" name="exponential_smoothing" domain="[('forecast_method', '=', 'es')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Product" name="group_by_product" context="{'group_by': 'product_id'}"/>
+                    <filter string="Product Category" name="group_by_category" context="{'group_by': 'product_category_id'}"/>
+                    <filter string="Warehouse" name="group_by_warehouse" context="{'group_by': 'warehouse_id'}"/>
+                    <filter string="Forecast Method" name="group_by_method" context="{'group_by': 'forecast_method'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Forecast Template Action -->
+    <record id="action_scm_forecast_template" model="ir.actions.act_window">
+        <field name="name">Forecast Templates</field>
+        <field name="res_model">scm.forecast.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_scm_forecast_template_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first forecast template
+            </p>
+            <p>
+                Forecast templates define the parameters and methods used to generate demand forecasts for your products.
+            </p>
+        </field>
+    </record>
+</odoo> 
