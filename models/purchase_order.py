@@ -58,6 +58,8 @@ class PurchaseOrder(models.Model):
     approval_date = fields.Datetime(string='Approval Date')
     rejection_reason = fields.Text(string='Rejection Reason')
 
+    fulfillment_plan_id = fields.Many2one('scm.pr.fulfillment.plan', string='Fulfillment Plan')
+
     @api.depends('requisition_id')
     def _compute_is_from_agreement(self):
         for order in self:

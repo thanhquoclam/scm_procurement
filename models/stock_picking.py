@@ -1,7 +1,9 @@
-from odoo import models, api
+from odoo import models, api, fields
 
 class StockPicking(models.Model):
     _inherit = 'stock.picking'
+
+    fulfillment_plan_id = fields.Many2one('scm.pr.fulfillment.plan', string='Fulfillment Plan')
 
     @api.model
     def _update_fulfillment_plans_on_receipt(self, pick):

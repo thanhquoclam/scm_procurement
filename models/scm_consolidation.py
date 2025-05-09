@@ -130,6 +130,16 @@ class PRConsolidationSession(models.Model):
         default=lambda self: self.env['stock.warehouse'].search([], limit=1),
         tracking=True
     )
+    fulfillment_plan_ids = fields.One2many(
+        'scm.pr.fulfillment.plan',
+        'consolidation_id',
+        string='Fulfillment Plans'
+    )
+
+    fulfillment_plan_count = fields.Integer(
+        string='Fulfillment Plans',
+        compute='_compute_fulfillment_plan_count'
+    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -161,6 +171,10 @@ class PRConsolidationSession(models.Model):
                 ('consolidation_ids', 'in', session.id)
             ])
             session.pr_count = len(purchase_requests)
+
+    def _compute_fulfillment_plan_count(self):
+        for record in self:
+            record.fulfillment_plan_count = len(record.fulfillment_plan_ids)
 
     def action_start_consolidation(self):
         """Start the consolidation process."""
@@ -526,6 +540,15 @@ class PRConsolidationSession(models.Model):
             'state': 'draft'
         })
 
+    def action_reject_consolidation(self):
+        """Reset the cancelled session to draft state."""
+        self.ensure_one()
+        if self.state != 'cancelled':
+            raise UserError(_('Only cancelled sessions can be reset to draft.'))
+        return self.write({
+            'state': 'draft'
+        })
+
     def action_view_purchase_orders(self):
         self.ensure_one()
         action = {
@@ -788,4 +811,15 @@ class PRConsolidationSession(models.Model):
                 self.write({'state': 'draft'})
         
         return result
+
+    def action_view_fulfillment_plans(self):
+        self.ensure_one()
+        return {
+            'name': _('Fulfillment Plans'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'scm.pr.fulfillment.plan',
+            'view_mode': 'tree,form',
+            'domain': [('consolidation_id', '=', self.id)],
+            'context': {'default_consolidation_id': self.id},
+        }
 

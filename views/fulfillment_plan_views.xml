@@ -5,15 +5,17 @@
         <field name="model">scm.pr.fulfillment.plan</field>
         <field name="arch" type="xml">
             <tree string="Fulfillment Plans">
+                <field name="pr_id"/>
                 <field name="pr_line_id"/>
-                <field name="fulfillment_method"/>
-                <field name="status"/>
+                <field name="consolidation_id"/>
+                <field name="source_type"/>
                 <field name="planned_qty"/>
                 <field name="fulfilled_qty"/>
                 <field name="remaining_qty"/>
-                <field name="po_id"/>
-                <field name="transfer_id"/>
-                <field name="timeline"/>
+                <field name="status"/>
+                <field name="planned_start_date"/>
+                <field name="planned_end_date"/>
+                <field name="responsible_id"/>
             </tree>
         </field>
     </record>
@@ -24,22 +26,68 @@
         <field name="arch" type="xml">
             <form string="Fulfillment Plan">
                 <header>
-                    <button name="action_suggest_internal_transfer" type="object" string="Suggest Internal Transfer" class="btn-secondary"/>
-                    <button name="action_create_internal_transfer" type="object" string="Create Internal Transfer" class="btn-primary" invisible="fulfillment_method != 'internal_transfer'"/>
+                    <button name="action_suggest_internal_transfer" type="object" string="Suggest Internal Transfer" invisible="source_type != 'transfer'"/>
+                    <button name="action_create_internal_transfer" type="object" string="Create Internal Transfer" invisible="source_type != 'transfer'"/>
+                    <field name="status" widget="statusbar"/>
+                    <button name="%(purchase.purchase_form_action)d" string="Purchase Orders" type="action" icon="fa-shopping-cart" context="{'search_default_fulfillment_plan_id': active_id}"/>
+                    <button name="%(stock.action_picking_tree_all)d" string="Internal Transfers" type="action" icon="fa-exchange" context="{'search_default_fulfillment_plan_id': active_id}"/>
+                    <button name="%(stock.stock_move_action)d" string="Stock Moves" type="action" icon="fa-truck" context="{'search_default_fulfillment_plan_id': active_id}"/>
                 </header>
                 <sheet>
                     <group>
-                        <field name="pr_line_id"/>
-                        <field name="fulfillment_method"/>
-                        <field name="status"/>
-                        <field name="planned_qty"/>
-                        <field name="fulfilled_qty"/>
-                        <field name="remaining_qty" readonly="1"/>
-                        <field name="po_id"/>
-                        <field name="transfer_id"/>
-                        <field name="timeline"/>
-                        <field name="note"/>
+                        <group>
+                            <field name="pr_id"/>
+                            <field name="pr_line_id"/>
+                            <field name="consolidation_id"/>
+                            <field name="source_type"/>
+                            <field name="source_location_id"/>
+                            <field name="destination_location_id"/>
+                            <field name="planned_qty"/>
+                            <field name="fulfilled_qty"/>
+                            <field name="remaining_qty"/>
+                            <field name="planned_start_date"/>
+                            <field name="planned_end_date"/>
+                            <field name="actual_start_date"/>
+                            <field name="actual_end_date"/>
+                            <field name="responsible_id"/>
+                        </group>
+                        <group>
+                            <field name="timeline"/>
+                            <field name="note"/>
+                        </group>
                     </group>
+                    <notebook>
+                        <page string="Purchase Orders">
+                            <field name="po_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="partner_id"/>
+                                    <field name="date_order"/>
+                                    <field name="amount_total"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Internal Transfers">
+                            <field name="transfer_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="scheduled_date"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Stock Moves">
+                            <field name="stock_move_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="product_id"/>
+                                    <field name="product_uom_qty"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>
@@ -51,7 +99,7 @@
         <field name="view_mode">tree,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Create and track fulfillment plans for purchase request lines.
+                Create and manage fulfillment plans for purchase requests.
             </p>
         </field>
     </record>

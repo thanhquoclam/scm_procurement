@@ -459,113 +459,189 @@
             4. Create user interface elements
             5. Implement validation rules
 
-## Phase 4: Fulfillment Tracking
+## Phase 4: Fulfillment Process & Tracking – Functional Requirements
 
-### FR-FT-001: PR Fulfillment Plan Model
-- **Source:** High-Level Req. Phase 4.1
+### Overview
+
+Phase 4 introduces a robust fulfillment tracking system that manages the process from Purchase Request (PR) through consolidation, sourcing decisions (on-hand, internal transfer, purchase), execution, and real-time tracking. The system ensures traceability, user guidance, and status propagation at every step.
+
+**Each Fulfillment Batch/Order (Fulfillment Plan) must always link to the originating Purchase Request (PR) and, if applicable, the PR Consolidation Session. This ensures full traceability and reporting across all fulfillment actions.**
+
+---
+
+### FR-FT-001: Fulfillment Plan Model
+
+- **Source:** High-Level Req. Phase 4.1, 4.2, 4.3
 - **Priority:** High
-- **Description:**
-  The system shall implement a PR Fulfillment Plan model to track the fulfillment of each purchase request line, including links to fulfillment actions such as purchase orders and internal transfers.
-- **User Interface (UI) Description:**
-  - A new model `scm.pr.fulfillment.plan` is accessible from the PR and PR line forms (as a tab or stat button).
-  - The fulfillment plan form shows:
-    - Linked PR line(s)
-    - Fulfillment method (PO, internal transfer, etc.)
-    - Status (pending, in progress, fulfilled, exception)
-    - Linked PO(s) or transfer(s)
-    - Quantities planned, fulfilled, remaining
-    - Timeline and notes
-- **Business Rules/Logic:**
-  - Each PR line can have one or more fulfillment plan records.
-  - Each fulfillment plan must specify a fulfillment method and link to the relevant action (PO, transfer, etc.).
-  - Status is computed based on fulfillment progress.
-- **Data Handling:**
-  - Input: PR line, fulfillment method, quantities, linked actions.
-  - Processing: Create/update fulfillment plan records as actions are taken.
-  - Output: Updated fulfillment plan records, status, and links.
-- **Preconditions:**
+- **Description:**  
+  Implement a Fulfillment Plan model to group and track all fulfillment actions for each PR line, with explicit links to the originating PR and, if applicable, the PR consolidation session, as well as all related actions.
+- **User Interface:**  
+  - Tab or smart button on PR, PR line, and consolidation session forms.
+  - Fulfillment Plan form shows: linked PR(s), PR line(s), consolidation, source/destination, planned/actual dates, status, responsible, linked POs/transfers, quantities.
+  - The Fulfillment Plan (Batch/Order) form must always display the linked PR and, if applicable, the consolidation session.
+- **Business Rules/Logic:**  
+  - Each plan is linked to a PR line, PR, and (if applicable) consolidation session.
+  - Each plan records all fulfillment actions (POs, transfers, stock moves).
+  - Status is computed based on the progress of all linked actions.
+  - The PR and consolidation session linkage is mandatory for traceability and reporting.
+- **Data Handling:**  
+  - **Input:** PR lines, PR, consolidation session, fulfillment source, planned/actual dates, responsible, quantities.
+  - **Processing:** Create/update fulfillment plan records as actions are taken.
+  - **Output:** Updated fulfillment plan records, status, and links.
+- **Preconditions:**  
   - PR lines exist and are ready for fulfillment.
-  - User has permission to create/update fulfillment plans.
-- **Postconditions:**
-  - Fulfillment plan records are created and linked to PR lines and actions.
-  - Status is updated as fulfillment progresses.
-- **Error Handling/Alternative Flows:**
-  - If a fulfillment plan cannot be created (e.g., missing data), display a validation error.
-  - If a fulfillment action fails (e.g., PO cancelled), update the plan status and notify the user.
+- **Postconditions:**  
+  - Fulfillment plan records are created and linked to PR lines, PR, consolidation session (if any), and actions.
+- **Error Handling/Alternative Flows:**  
+  - If a plan cannot be created (e.g., missing data), display a validation error.
+  - If an action fails (e.g., PO cancelled), update the plan status and notify the user.
 
-### FR-FT-002: Integration with PO Receipts
-- **Source:** High-Level Req. Phase 4.2
+---
+
+### FR-FT-002: Fulfillment Sourcing and Execution
+
+- **Source:** High-Level Req. Phase 4.2, 4.3
 - **Priority:** High
-- **Description:**
-  The system shall automatically update the fulfillment status of PR lines and fulfillment plans based on the receipt of goods in related purchase orders.
-- **User Interface (UI) Description:**
-  - When a PO receipt is validated, the related PR fulfillment plan and PR line status are updated.
-  - The PR and fulfillment plan forms show received quantities and fulfillment progress.
-- **Business Rules/Logic:**
-  - When a PO receipt is validated, update the linked fulfillment plan and PR line with the received quantity.
-  - If the received quantity fulfills the plan, mark it as fulfilled; otherwise, update as partially fulfilled.
-- **Data Handling:**
-  - Input: PO receipt validation event.
-  - Processing: Update fulfillment plan and PR line status and quantities.
-  - Output: Updated status and quantities on fulfillment plan and PR line.
-- **Preconditions:**
-  - PO is linked to a fulfillment plan and PR line.
-  - PO receipt is validated.
-- **Postconditions:**
-  - Fulfillment plan and PR line status/quantities are updated.
-- **Error Handling/Alternative Flows:**
-  - If the PO is not linked to a fulfillment plan, log a warning and skip update.
-  - If received quantity exceeds planned, flag as exception.
+- **Description:**  
+  The system shall determine the optimal fulfillment source for each PR line, including on-hand stock, internal transfer, or purchase order, and allow users to review, override, and execute fulfillment actions via a guided workflow. All fulfillment actions must be linked to the originating PR and, if applicable, the PR consolidation session.
+- **User Interface:**  
+  - **Fulfillment Suggestion Wizard:**  
+    - Entry point: Button on PR Line, PR, or Consolidation Session ("Suggest Fulfillment" or "Create Fulfillment Plan").
+    - **Step 1:** Review PR lines to fulfill (product, quantity, required date, destination).
+    - **Step 2:** For each line, system displays:
+      - On-hand stock available (by location)
+      - Internal transfer options (other warehouses/locations with stock)
+      - PO suggestion (if not enough stock/transfer options)
+      - User can accept, override, or split fulfillment (e.g., part from stock, part from PO).
+    - **Step 3:** Action confirmation and summary of fulfillment actions to be created (stock moves, transfers, POs).
+  - **Fulfillment Plan Form View:**  
+    - Tabs/sections for general info, fulfillment actions (POs, transfers, stock moves), timeline/notes.
+    - The form must always show the linked PR and, if applicable, the consolidation session.
+  - **Fulfillment Tracking Dashboard (optional):**  
+    - Filters by PR, consolidation, product, status, responsible; KPIs for progress, delays, exceptions.
+- **Business Rules/Logic:**  
+  - For each PR line, check on-hand stock at the destination location.
+  - If insufficient, check other internal locations for possible transfer.
+  - If still insufficient, suggest PO for remaining quantity.
+  - Suggest transfer from the location with the most available stock, or allow user to select/split.
+  - User can override system suggestion at any step; all overrides are logged.
+  - Upon confirmation, system creates and links all fulfillment actions (stock moves, transfers, POs) to the plan, PR line, PR, and consolidation session (if any).
+- **Data Handling:**  
+  - **Input:** PR line(s), PR, consolidation session, product, quantity, required date, destination, stock levels, location data.
+  - **Processing:** Suggest fulfillment source(s), allow user override, create fulfillment plan and actions, update status and quantities.
+  - **Output:** Fulfillment plan record, linked actions (POs, transfers, stock moves), updated status and quantities.
+- **Preconditions:**  
+  - PR line(s) are approved and ready for fulfillment.
+  - Stock and location data are up to date.
+- **Postconditions:**  
+  - Fulfillment plan is created and linked to PR line(s), PR, and consolidation session (if any).
+  - All fulfillment actions are created and linked.
+  - Status and quantities are updated.
+- **Error Handling/Alternative Flows:**  
+  - If no source is available, flag as exception and notify user.
+  - If user overrides, log the decision.
+  - If an action fails or is cancelled, update status and notify user.
+  - If stock levels change during the process, prompt user to re-confirm.
 
-### FR-FT-003: Internal Transfer Suggestions
-- **Source:** High-Level Req. Phase 4.3
-- **Priority:** Medium
-- **Description:**
-  The system shall suggest internal transfers for PR lines that can be fulfilled from available stock in other locations/warehouses.
-- **User Interface (UI) Description:**
-  - In the fulfillment plan or PR line view, a button or suggestion appears if internal transfer is possible.
-  - A wizard allows the user to review, accept, or reject the suggested transfer.
-  - Accepted transfers create a stock transfer order linked to the fulfillment plan.
-- **Business Rules/Logic:**
-  - The system checks available stock in other locations/warehouses.
-  - If sufficient stock exists, suggest an internal transfer.
-  - User can accept (creates transfer) or reject (removes suggestion).
-- **Data Handling:**
-  - Input: PR line, stock levels in all locations.
-  - Processing: Suggest transfer if possible, create transfer order if accepted.
-  - Output: Internal transfer order, updated fulfillment plan.
-- **Preconditions:**
-  - PR line exists and is not yet fulfilled.
-  - Stock is available in other locations.
-- **Postconditions:**
-  - Internal transfer order is created and linked to fulfillment plan if accepted.
-  - PR line and fulfillment plan status are updated.
-- **Error Handling/Alternative Flows:**
-  - If stock is no longer available when user accepts, show error and do not create transfer.
-  - If user rejects, log the decision.
+---
 
-### FR-FT-004: PR Status Updates
+### FR-FT-002.1: Internal Transfer Suggestion
+
+- **Source:** Phase 4.2
+- **Priority:** High
+- **Description:**  
+  The system shall suggest internal transfers for fulfillment when on-hand stock at the destination is insufficient but available at other locations.
+- **User Interface:**  
+  - In the Fulfillment Suggestion Wizard, show a list of locations with available stock for the product.
+  - Allow user to select one or more locations for transfer and split quantities as needed.
+- **Business Rules/Logic:**  
+  - Suggest transfer from the location with the most available stock.
+  - Allow user to split transfer across multiple locations.
+  - Create internal transfer orders and link to fulfillment plan.
+- **Data Handling:**  
+  - **Input:** Product, required quantity, stock by location.
+  - **Processing:** Suggest and create transfer(s).
+  - **Output:** Internal transfer order(s), updated fulfillment plan.
+- **Preconditions:**  
+  - Stock available at other internal locations.
+- **Postconditions:**  
+  - Internal transfer order(s) created and linked.
+- **Error Handling:**  
+  - If stock is reserved or unavailable, prompt user to re-select.
+
+---
+
+### FR-FT-002.2: User Interface for Fulfillment Workflow
+
+- **Source:** Phase 4.3
+- **Priority:** High
+- **Description:**  
+  The system shall provide a guided, step-by-step user interface for managing the fulfillment workflow, from suggestion to execution and tracking.
+- **User Interface:**  
+  - Wizard for fulfillment suggestion and action creation.
+  - Fulfillment Plan form with tabs for actions, status, and history.
+  - Dashboard for tracking fulfillment progress and exceptions.
+- **Business Rules/Logic:**  
+  - All actions are accessible and traceable from the UI.
+  - Status and quantities update in real time.
+- **Data Handling:**  
+  - **Input:** User selections, system suggestions.
+  - **Processing:** Create/update records, update status.
+  - **Output:** Updated UI, records, and notifications.
+- **Preconditions:**  
+  - User has access to PRs and fulfillment features.
+- **Postconditions:**  
+  - Fulfillment actions are created and tracked via UI.
+- **Error Handling:**  
+  - UI displays errors and guides user to resolution.
+
+---
+
+### FR-FT-003: Status Propagation and Notification
+
 - **Source:** High-Level Req. Phase 4.4
 - **Priority:** High
-- **Description:**
-  The system shall automatically update the status of each purchase request (PR) and PR line based on fulfillment progress (e.g., pending, in progress, partially fulfilled, fulfilled).
-- **User Interface (UI) Description:**
-  - PR and PR line forms and list views display current fulfillment status.
-  - Status is updated in real time as fulfillment actions are completed.
-- **Business Rules/Logic:**
-  - Status is computed based on linked fulfillment plans and their progress.
-  - Statuses include: pending, in progress, partially fulfilled, fulfilled, exception.
-- **Data Handling:**
-  - Input: Fulfillment plan and action status.
-  - Processing: Compute and update PR/PR line status.
-  - Output: Updated status fields on PR and PR line.
-- **Preconditions:**
-  - PR and PR lines exist and are linked to fulfillment plans.
-- **Postconditions:**
-  - Status fields on PR and PR lines reflect current fulfillment progress.
-- **Error Handling/Alternative Flows:**
-  - If fulfillment plan is deleted or unlinked, recalculate status.
-  - If conflicting statuses exist (e.g., one plan fulfilled, one pending), show as partially fulfilled.
+- **Description:**  
+  The system shall automatically update the status of PR lines, PRs, and consolidation sessions as fulfillment progresses, and notify relevant users on completion or exception.
+- **User Interface:**  
+  - Status fields on PR line, PR, and consolidation session forms and list views.
+  - Notifications via Odoo chatter, email, or in-app alerts.
+- **Business Rules/Logic:**  
+  - Status is computed and propagated based on fulfillment plan progress.
+  - Notifications are sent on completion, exception, or delay.
+- **Data Handling:**  
+  - **Input:** Fulfillment plan status changes.
+  - **Processing:** Update and propagate status, send notifications.
+  - **Output:** Updated status fields, sent notifications.
+- **Preconditions:**  
+  - Fulfillment plan is linked to PR line, PR, and consolidation session.
+- **Postconditions:**  
+  - Status is updated and notifications sent.
+- **Error Handling/Alternative Flows:**  
+  - If notification fails, log and retry or escalate.
+
+---
+
+### Example User Workflow
+
+1. **User opens a PR or Consolidation Session.**
+2. **Clicks "Suggest Fulfillment" button.**
+3. **Wizard opens:**
+   - Step 1: Shows PR lines needing fulfillment.
+   - Step 2: For each line, system suggests:
+     - "10 units can be fulfilled from Main Warehouse (on-hand)"
+     - "5 units can be transferred from Branch Warehouse"
+     - "15 units need to be purchased (PO)"
+   - User can accept, override, or split sources.
+4. **User confirms.**
+5. **System creates:**
+   - Stock move for 10 units from Main Warehouse
+   - Internal transfer for 5 units from Branch Warehouse
+   - PO for 15 units
+   - All actions are linked to the Fulfillment Plan and PR line.
+6. **User tracks progress via Fulfillment Plan form and dashboard.**
+7. **Status updates automatically as actions are completed.**
+8. **Notifications sent on completion or exception.
 
 ## Phase 5: Change Management & Optimization
 

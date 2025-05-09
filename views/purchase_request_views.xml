@@ -1,0 +1,54 @@
+<odoo>
+    <!-- Server Action for PR Line List View -->
+    <record id="action_suggest_fulfillment_from_pr_line" model="ir.actions.server">
+        <field name="name">Suggest Fulfillment</field>
+        <field name="model_id" ref="purchase_request.model_purchase_request_line"/>
+        <field name="binding_model_id" ref="purchase_request.model_purchase_request_line"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = {
+                'type': 'ir.actions.act_window',
+                'res_model': 'scm.fulfillment.suggestion.wizard',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {'active_ids': [record.id for record in records]},
+            }
+        </field>
+    </record>
+
+    <!-- Add the action to the PR Line tree view action menu -->
+    <record id="purchase_request_line_tree_view" model="ir.ui.view">
+        <field name="model">purchase.request.line</field>
+        <field name="inherit_id" ref="purchase_request.purchase_request_line_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="/tree" position="inside">
+                <field name="state"/>
+            </xpath>
+            <xpath expr="/tree" position="attributes">
+                <attribute name="multi_edit">1</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_fulfillment_suggestion_wizard" model="ir.actions.act_window">
+        <field name="name">Suggest Fulfillment</field>
+        <field name="res_model">scm.fulfillment.suggestion.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'active_ids': active_ids}</field>
+        <field name="binding_model_id" ref="purchase_request.model_purchase_request_line"/>
+        <field name="binding_view_types">list</field>
+    </record>
+
+    <!-- Smart Button on PR Line Form View -->
+    <record id="purchase_request_line_form_view_inherit_fulfillment" model="ir.ui.view">
+        <field name="model">purchase.request.line</field>
+        <field name="inherit_id" ref="purchase_request.purchase_request_line_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="%(action_fulfillment_suggestion_wizard)d" type="action"
+                        string="Suggest Fulfillment" class="btn-primary"/>
+            </xpath>
+        </field>
+    </record>
+</odoo> 

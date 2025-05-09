@@ -506,4 +506,51 @@ The schema supports PR consolidation (`scm_pr_consolidation_session`, `scm_conso
 
 ## 7. Summary
 
-The schema supports PR consolidation (`scm_pr_consolidation_session`, `scm_consolidated_pr_line`) linked to purchase requests (`purchase_request`). It includes functionality for inventory rules (`scm_inventory_rule`) and forecasting (`scm_forecast`, `scm_forecast_line`). Wizard tables aid in UI processes. Key relationships are established via foreign keys and dedicated relation tables. However, some expected relation tables seem missing, and the `_unknown_*` tables suggest schema errors that need addressing. 
+The schema supports PR consolidation (`scm_pr_consolidation_session`, `scm_consolidated_pr_line`) linked to purchase requests (`purchase_request`). It includes functionality for inventory rules (`scm_inventory_rule`) and forecasting (`scm_forecast`, `scm_forecast_line`). Wizard tables aid in UI processes. Key relationships are established via foreign keys and dedicated relation tables. However, some expected relation tables seem missing, and the `_unknown_*` tables suggest schema errors that need addressing.
+
+# Phase 4: Fulfillment Process & Tracking – Database Schema
+
+## scm_pr_fulfillment_plan
+
+| Field                   | Type         | Description                                 |
+|-------------------------|--------------|---------------------------------------------|
+| id                      | Integer      | Primary key                                 |
+| pr_line_id              | Many2one     | Linked PR line (`purchase.request.line`)    |
+| pr_id                   | Many2one     | Linked PR (`purchase.request`) (related)    |
+| consolidation_id        | Many2one     | PR Consolidation Session (related)          |
+| source_type             | Selection    | stock / transfer / po                       |
+| source_location_id      | Many2one     | Source location                             |
+| destination_location_id | Many2one     | Destination location                        |
+| planned_start_date      | DateTime     | Planned start date                          |
+| planned_end_date        | DateTime     | Planned end date                            |
+| actual_start_date       | DateTime     | Actual start date                           |
+| actual_end_date         | DateTime     | Actual end date                             |
+| responsible_id          | Many2one     | Responsible user/department                 |
+| po_ids                  | One2many     | Linked Purchase Orders                      |
+| transfer_ids            | One2many     | Linked Internal Transfers                   |
+| stock_move_ids          | One2many     | Linked Stock Moves (on-hand fulfillment)    |
+| status                  | Selection    | pending / in_progress / fulfilled / partial / exception |
+| planned_qty             | Float        | Planned quantity                            |
+| fulfilled_qty           | Float        | Fulfilled quantity                          |
+| remaining_qty           | Float        | Remaining quantity                          |
+| timeline                | Char         | Timeline/Notes                              |
+| note                    | Text         | Notes                                       |
+| create_date             | DateTime     | Created On                                  |
+| write_date              | DateTime     | Last Updated                                |
+
+## Related Models/Fields
+
+- **purchase.request.line**: Add One2many to `scm_pr_fulfillment_plan` for traceability.
+- **purchase.request**: Add One2many to `scm_pr_fulfillment_plan` (computed via PR lines).
+- **scm_consolidation_session**: Add One2many to `scm_pr_fulfillment_plan` (computed via PR lines).
+- **stock.picking**: Link to fulfillment plan via `transfer_ids`.
+- **purchase.order**: Link to fulfillment plan via `po_ids`.
+- **stock.move**: Link to fulfillment plan via `stock_move_ids`.
+
+## Status Propagation
+
+- Status fields on PR line, PR, and consolidation session should be computed based on the status of linked fulfillment plans.
+
+## Audit & Traceability
+
+- All user overrides, exceptions, and workflow actions should be logged (e.g., via chatter or a dedicated log model). 

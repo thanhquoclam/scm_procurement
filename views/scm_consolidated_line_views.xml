@@ -111,7 +111,7 @@
                         <page string="Fulfillment Plans">
                             <field name="fulfillment_plan_ids">
                                 <tree>
-                                    <field name="fulfillment_method"/>
+                                    <field name="source_type"/>
                                     <field name="status"/>
                                     <field name="planned_qty"/>
                                     <field name="fulfilled_qty"/>

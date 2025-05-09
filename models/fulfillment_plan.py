@@ -12,19 +12,42 @@ class PRFulfillmentPlan(models.Model):
         required=True,
         ondelete='cascade',
     )
-    fulfillment_method = fields.Selection([
+    pr_id = fields.Many2one(
+        'purchase.request',
+        string='Purchase Request',
+        required=True,
+        compute='_compute_pr_id',
+        store=True,
+        readonly=False,
+    )
+    consolidation_id = fields.Many2one(
+        'scm.pr.consolidation.session',
+        string='PR Consolidation Session',
+        required=True,
+        ondelete='restrict',
+    )
+    source_type = fields.Selection([
+        ('stock', 'On-hand Stock'),
+        ('transfer', 'Internal Transfer'),
         ('po', 'Purchase Order'),
-        ('internal_transfer', 'Internal Transfer'),
-        ('other', 'Other'),
-    ], string='Fulfillment Method', required=True)
+    ], string='Source Type')
+    source_location_id = fields.Many2one('stock.location', string='Source Location')
+    destination_location_id = fields.Many2one('stock.location', string='Destination Location')
+    planned_start_date = fields.Datetime(string='Planned Start Date')
+    planned_end_date = fields.Datetime(string='Planned End Date')
+    actual_start_date = fields.Datetime(string='Actual Start Date')
+    actual_end_date = fields.Datetime(string='Actual End Date')
+    responsible_id = fields.Many2one('res.users', string='Responsible')
+    po_ids = fields.One2many('purchase.order', 'fulfillment_plan_id', string='Purchase Orders')
+    transfer_ids = fields.One2many('stock.picking', 'fulfillment_plan_id', string='Internal Transfers')
+    stock_move_ids = fields.One2many('stock.move', 'fulfillment_plan_id', string='Stock Moves')
     status = fields.Selection([
         ('pending', 'Pending'),
         ('in_progress', 'In Progress'),
         ('fulfilled', 'Fulfilled'),
+        ('partial', 'Partial'),
         ('exception', 'Exception'),
     ], string='Status', default='pending', required=True)
-    po_id = fields.Many2one('purchase.order', string='Purchase Order')
-    transfer_id = fields.Many2one('stock.picking', string='Internal Transfer')
     planned_qty = fields.Float(string='Planned Quantity', required=True)
     fulfilled_qty = fields.Float(string='Fulfilled Quantity', default=0.0)
     remaining_qty = fields.Float(string='Remaining Quantity', compute='_compute_remaining_qty', store=True)
@@ -32,6 +55,15 @@ class PRFulfillmentPlan(models.Model):
     note = fields.Text(string='Notes')
     create_date = fields.Datetime(string='Created On', readonly=True)
     write_date = fields.Datetime(string='Last Updated', readonly=True)
+
+    # Deprecated fields (for backward compatibility, to be removed after migration)
+    po_id = fields.Many2one('purchase.order', string='Purchase Order (deprecated)')
+    transfer_id = fields.Many2one('stock.picking', string='Internal Transfer (deprecated)')
+
+    @api.depends('pr_line_id')
+    def _compute_pr_id(self):
+        for rec in self:
+            rec.pr_id = rec.pr_line_id.request_id if rec.pr_line_id else False
 
     @api.depends('planned_qty', 'fulfilled_qty')
     def _compute_remaining_qty(self):
@@ -106,6 +138,4 @@ class PRFulfillmentPlan(models.Model):
             'res_model': 'stock.picking',
             'res_id': picking.id,
             'view_mode': 'form',
-        }
-
-    # Add inverse relation to PR line (to be added in purchase.request.line) 
+        } 

@@ -9,8 +9,10 @@ from . import scm_forecast
 from . import stock_quant
 
 # Purchase related models
-from . import purchase_request
 from . import purchase_order
+from . import stock_picking
+from . import stock_move
+from . import purchase_request
 from . import purchase_order_line
 from . import blanket_order
 
