@@ -37,6 +37,7 @@
         'wizards/validate_inventory_wizard_views.xml',
         'wizards/select_pr_lines_wizard_views.xml',
         'wizards/create_po_wizard_views.xml',
+        'views/fulfillment_plan_views.xml',
         'views/menu_views.xml',
     ],
     'demo': [],

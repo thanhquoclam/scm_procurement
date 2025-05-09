@@ -16,3 +16,4 @@ from . import blanket_order
 
 # New import
 from . import scm_forecast_template
+from . import fulfillment_plan

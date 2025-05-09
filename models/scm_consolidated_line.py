@@ -188,6 +188,13 @@ class ConsolidatedPRLine(models.Model):
         copy=False
     )
 
+    fulfillment_plan_ids = fields.One2many(
+        'scm.pr.fulfillment.plan',
+        compute='_compute_fulfillment_plan_ids',
+        string='Fulfillment Plans',
+        store=False
+    )
+
     @api.depends('product_id', 'warehouse_id', 'quantity', 'purchase_request_line_ids.product_qty')
     def _compute_inventory_data(self):
         """Compute current inventory levels and related data"""
@@ -953,3 +960,8 @@ class ConsolidatedPRLine(models.Model):
                 consolidation.write({'state': 'draft'})
         
         return result
+
+    def _compute_fulfillment_plan_ids(self):
+        for rec in self:
+            pr_lines = rec.purchase_request_line_ids
+            rec.fulfillment_plan_ids = self.env['scm.pr.fulfillment.plan'].search([('pr_line_id', 'in', pr_lines.ids)])

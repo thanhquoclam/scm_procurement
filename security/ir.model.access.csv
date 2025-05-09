@@ -45,3 +45,4 @@ access_scm_forecast_template_user,scm.forecast.template.user,model_scm_forecast_
 access_scm_forecast_template_manager,scm.forecast.template.manager,model_scm_forecast_template,stock.group_stock_manager,1,1,1,1
 access_scm_forecast_historical_data_user,scm.forecast.historical.data.user,model_scm_forecast_historical_data,stock.group_stock_user,1,1,1,0
 access_scm_forecast_historical_data_manager,scm.forecast.historical.data.manager,model_scm_forecast_historical_data,stock.group_stock_manager,1,1,1,1
+access_scm_pr_fulfillment_plan,scm.pr.fulfillment.plan,model_scm_pr_fulfillment_plan,base.group_user,1,1,1,1

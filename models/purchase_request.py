@@ -260,6 +260,12 @@ class PurchaseRequestLine(models.Model):
         required=True
     )
 
+    fulfillment_plan_ids = fields.One2many(
+        'scm.pr.fulfillment.plan',
+        'pr_line_id',
+        string='Fulfillment Plans',
+    )
+
     def unlink(self):
         """Control deletion of purchase request lines based on user rights and state."""
         is_admin = self.env.user._is_admin() or \

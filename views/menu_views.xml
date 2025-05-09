@@ -43,6 +43,9 @@
               action="purchase_request.purchase_request_form_action"
               sequence="10"/>
 
+    <menuitem id="menu_fulfillment_plan_root" name="Fulfillment Plans" parent="menu_scm_root" sequence="100"/>
+    <menuitem id="menu_fulfillment_plan" name="Fulfillment Plans" parent="menu_fulfillment_plan_root" action="action_fulfillment_plan"/>
+
     <!-- Configuration submenu -->
     <menuitem id="menu_scm_configuration"
               name="Configuration"

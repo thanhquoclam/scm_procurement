@@ -108,6 +108,19 @@
                         <page string="Notes" name="notes">
                             <field name="notes"/>
                         </page>
+                        <page string="Fulfillment Plans">
+                            <field name="fulfillment_plan_ids">
+                                <tree>
+                                    <field name="fulfillment_method"/>
+                                    <field name="status"/>
+                                    <field name="planned_qty"/>
+                                    <field name="fulfilled_qty"/>
+                                    <field name="remaining_qty"/>
+                                    <field name="po_id"/>
+                                    <field name="transfer_id"/>
+                                </tree>
+                            </field>
+                        </page>
                     </notebook>
                 </sheet>
                 <div class="oe_chatter">
