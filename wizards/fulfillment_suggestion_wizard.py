@@ -95,18 +95,39 @@ class FulfillmentSuggestionWizard(models.TransientModel):
             suggestion['destination_location_id'] = dest_location.id
             
             # Check if product is available in any internal location
-            available_qty = self.env['stock.quant']._get_available_quantity(
-                pr_line.product_id,
-                dest_location
-            )
+            all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
+            candidate_locations = all_locations - dest_location
             
-            if available_qty >= pr_line.product_qty:
-                suggestion.update({
-                    'source_type': 'transfer',
-                    'source_location_id': dest_location.id,
-                    'timeline': 'immediate',
-                    'note': 'Product available in stock'
-                })
+            for loc in candidate_locations:
+                available_qty = self.env['stock.quant']._get_available_quantity(
+                    pr_line.product_id,
+                    loc
+                )
+                
+                if available_qty >= pr_line.product_qty:
+                    suggestion.update({
+                        'source_type': 'transfer',
+                        'source_location_id': loc.id,
+                        'timeline': 'immediate',
+                        'note': f'Product available in {loc.display_name}'
+                    })
+                    break
+                    
+            # If no internal transfer is possible, check if product is available in destination
+            if suggestion['source_type'] == 'purchase':
+                available_qty = self.env['stock.quant']._get_available_quantity(
+                    pr_line.product_id,
+                    dest_location
+                )
+                
+                if available_qty >= pr_line.product_qty:
+                    suggestion.update({
+                        'source_type': 'stock',
+                        'source_location_id': dest_location.id,
+                        'timeline': 'immediate',
+                        'note': 'Product available in destination location'
+                    })
+                    
         return suggestion
 
     def _suggest_fulfillment_consolidated(self, consolidated_line):
@@ -128,19 +149,19 @@ class FulfillmentSuggestionWizard(models.TransientModel):
     def action_confirm(self):
         if not self.pr_id or not self.consolidation_id:
             raise UserError(_("Both Purchase Request and Consolidation must be selected."))
-        for pr_line in self.pr_id.line_ids:
+        for line in self.line_ids:
             plan_vals = {
-                'pr_line_id': pr_line.id,
+                'pr_line_id': line.pr_line_id.id,
                 'pr_id': self.pr_id.id,
                 'consolidation_id': self.consolidation_id.id,
-                'planned_qty': pr_line.product_qty,
-                'source_type': 'po',  # or your suggestion logic
-                'source_location_id': False,
-                'destination_location_id': False,
-                'planned_start_date': fields.Date.today(),
-                'planned_end_date': fields.Date.today(),
-                'timeline': 'immediate',
-                'note': False,
+                'planned_qty': line.planned_qty,
+                'source_type': line.source_type,
+                'source_location_id': line.source_location_id.id if line.source_location_id else False,
+                'destination_location_id': line.destination_location_id.id if line.destination_location_id else False,
+                'planned_start_date': line.planned_start_date,
+                'planned_end_date': line.planned_end_date,
+                'timeline': line.timeline,
+                'note': line.note,
             }
             self.env['scm.pr.fulfillment.plan'].create(plan_vals)
         return {'type': 'ir.actions.act_window_close'}
@@ -170,7 +191,9 @@ class FulfillmentSuggestionWizard(models.TransientModel):
     def _create_internal_transfer(self, plan, pr_line, qty):
         # Create an internal transfer (stock picking)
         product = pr_line.product_id
-        warehouse = pr_line.request_id.company_id.warehouse_id or self.env['stock.warehouse'].search([], limit=1)
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', pr_line.request_id.company_id.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % pr_line.request_id.company_id.display_name)
         dest_location = warehouse.lot_stock_id
         all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
         candidate_locations = all_locations - dest_location
@@ -282,18 +305,39 @@ class FulfillmentSuggestionWizardLine(models.TransientModel):
             suggestion['destination_location_id'] = dest_location.id
             
             # Check if product is available in any internal location
-            available_qty = self.env['stock.quant']._get_available_quantity(
-                pr_line.product_id,
-                dest_location
-            )
+            all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
+            candidate_locations = all_locations - dest_location
             
-            if available_qty >= pr_line.product_qty:
-                suggestion.update({
-                    'source_type': 'transfer',
-                    'source_location_id': dest_location.id,
-                    'timeline': 'immediate',
-                    'note': 'Product available in stock'
-                })
+            for loc in candidate_locations:
+                available_qty = self.env['stock.quant']._get_available_quantity(
+                    pr_line.product_id,
+                    loc
+                )
+                
+                if available_qty >= pr_line.product_qty:
+                    suggestion.update({
+                        'source_type': 'transfer',
+                        'source_location_id': loc.id,
+                        'timeline': 'immediate',
+                        'note': f'Product available in {loc.display_name}'
+                    })
+                    break
+                    
+            # If no internal transfer is possible, check if product is available in destination
+            if suggestion['source_type'] == 'purchase':
+                available_qty = self.env['stock.quant']._get_available_quantity(
+                    pr_line.product_id,
+                    dest_location
+                )
+                
+                if available_qty >= pr_line.product_qty:
+                    suggestion.update({
+                        'source_type': 'stock',
+                        'source_location_id': dest_location.id,
+                        'timeline': 'immediate',
+                        'note': 'Product available in destination location'
+                    })
+                    
         return suggestion
 
     def action_confirm(self):
@@ -315,8 +359,8 @@ class FulfillmentSuggestionWizardLine(models.TransientModel):
                 'consolidation_id': consolidation_id,
                 'planned_qty': line.planned_qty,
                 'source_type': line.source_type,
-                'source_location_id': line.source_location_id.id,
-                'destination_location_id': line.destination_location_id.id,
+                'source_location_id': line.source_location_id.id if line.source_location_id else False,
+                'destination_location_id': line.destination_location_id.id if line.destination_location_id else False,
                 'planned_start_date': line.planned_start_date,
                 'planned_end_date': line.planned_end_date,
                 'timeline': line.timeline,
@@ -358,7 +402,9 @@ class FulfillmentSuggestionWizardLine(models.TransientModel):
     def _create_internal_transfer(self, plan, pr_line, qty):
         # Create an internal transfer (stock picking)
         product = pr_line.product_id
-        warehouse = pr_line.request_id.company_id.warehouse_id or self.env['stock.warehouse'].search([], limit=1)
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', pr_line.request_id.company_id.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % pr_line.request_id.company_id.display_name)
         dest_location = warehouse.lot_stock_id
         all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
         candidate_locations = all_locations - dest_location

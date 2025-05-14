@@ -16,6 +16,7 @@
                 <field name="planned_start_date"/>
                 <field name="planned_end_date"/>
                 <field name="responsible_id"/>
+                <field name="code" readonly="1"/>
             </tree>
         </field>
     </record>
@@ -35,60 +36,61 @@
                 </header>
                 <sheet>
                     <group>
-                        <group>
-                            <field name="pr_id"/>
-                            <field name="pr_line_id"/>
-                            <field name="consolidation_id"/>
-                            <field name="source_type"/>
-                            <field name="source_location_id"/>
-                            <field name="destination_location_id"/>
-                            <field name="planned_qty"/>
-                            <field name="fulfilled_qty"/>
-                            <field name="remaining_qty"/>
-                            <field name="planned_start_date"/>
-                            <field name="planned_end_date"/>
-                            <field name="actual_start_date"/>
-                            <field name="actual_end_date"/>
-                            <field name="responsible_id"/>
-                        </group>
-                        <group>
-                            <field name="timeline"/>
-                            <field name="note"/>
-                        </group>
+                        <field name="code" readonly="1"/>
+                        <field name="pr_id"/>
+                        <field name="pr_line_id"/>
+                        <field name="consolidation_id"/>
+                        <field name="source_type"/>
+                        <field name="source_location_id"/>
+                        <field name="destination_location_id"/>
+                        <field name="planned_qty"/>
+                        <field name="fulfilled_qty"/>
+                        <field name="remaining_qty"/>
+                        <field name="planned_start_date"/>
+                        <field name="planned_end_date"/>
+                        <field name="actual_start_date"/>
+                        <field name="actual_end_date"/>
+                        <field name="responsible_id"/>
+                        <field name="status"/>
+                        <field name="fulfillment_method"/>
                     </group>
-                    <notebook>
-                        <page string="Purchase Orders">
-                            <field name="po_ids">
-                                <tree>
-                                    <field name="name"/>
-                                    <field name="partner_id"/>
-                                    <field name="date_order"/>
-                                    <field name="amount_total"/>
-                                    <field name="state"/>
-                                </tree>
-                            </field>
-                        </page>
-                        <page string="Internal Transfers">
-                            <field name="transfer_ids">
-                                <tree>
-                                    <field name="name"/>
-                                    <field name="scheduled_date"/>
-                                    <field name="state"/>
-                                </tree>
-                            </field>
-                        </page>
-                        <page string="Stock Moves">
-                            <field name="stock_move_ids">
-                                <tree>
-                                    <field name="name"/>
-                                    <field name="product_id"/>
-                                    <field name="product_uom_qty"/>
-                                    <field name="state"/>
-                                </tree>
-                            </field>
-                        </page>
-                    </notebook>
+                    <group>
+                        <field name="timeline"/>
+                        <field name="note"/>
+                    </group>
                 </sheet>
+                <notebook>
+                    <page string="Purchase Orders">
+                        <field name="po_ids">
+                            <tree>
+                                <field name="name"/>
+                                <field name="partner_id"/>
+                                <field name="date_order"/>
+                                <field name="amount_total"/>
+                                <field name="state"/>
+                            </tree>
+                        </field>
+                    </page>
+                    <page string="Internal Transfers">
+                        <field name="transfer_ids">
+                            <tree>
+                                <field name="name"/>
+                                <field name="scheduled_date"/>
+                                <field name="state"/>
+                            </tree>
+                        </field>
+                    </page>
+                    <page string="Stock Moves">
+                        <field name="stock_move_ids">
+                            <tree>
+                                <field name="name"/>
+                                <field name="product_id"/>
+                                <field name="product_uom_qty"/>
+                                <field name="state"/>
+                            </tree>
+                        </field>
+                    </page>
+                </notebook>
             </form>
         </field>
     </record>

@@ -55,10 +55,17 @@ class PRFulfillmentPlan(models.Model):
     note = fields.Text(string='Notes')
     create_date = fields.Datetime(string='Created On', readonly=True)
     write_date = fields.Datetime(string='Last Updated', readonly=True)
+    fulfillment_method = fields.Selection([
+        ('internal_transfer', 'Internal Transfer'),
+        ('purchase', 'Purchase Order'),
+        ('stock', 'On-hand Stock'),
+    ], string='Fulfillment Method')
 
     # Deprecated fields (for backward compatibility, to be removed after migration)
     po_id = fields.Many2one('purchase.order', string='Purchase Order (deprecated)')
     transfer_id = fields.Many2one('stock.picking', string='Internal Transfer (deprecated)')
+
+    code = fields.Char(string='Code', required=True, readonly=True, copy=False, index=True, default='/')
 
     @api.depends('pr_line_id')
     def _compute_pr_id(self):
@@ -75,7 +82,9 @@ class PRFulfillmentPlan(models.Model):
         self.ensure_one()
         product = self.pr_line_id.product_id
         required_qty = self.remaining_qty
-        warehouse = self.pr_line_id.request_id.company_id.warehouse_id or self.env['stock.warehouse'].search([], limit=1)
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', self.pr_line_id.request_id.company_id.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % self.pr_line_id.request_id.company_id.display_name)
         # Find all locations except the destination warehouse's main stock
         all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
         dest_location = warehouse.lot_stock_id
@@ -94,9 +103,14 @@ class PRFulfillmentPlan(models.Model):
         # Store suggestion info in the plan (or show a wizard in the UI)
         self.timeline = _('Suggested transfer from %s (%.2f available) to %s') % (source_location.display_name, available, dest_location.display_name)
         return {
-            'type': 'ir.actions.act_window_message',
-            'title': _('Internal Transfer Suggested'),
-            'message': self.timeline,
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Internal Transfer Suggested'),
+                'message': self.timeline,
+                'sticky': False,
+                'type': 'success',
+            }
         }
 
     def action_create_internal_transfer(self):
@@ -104,7 +118,9 @@ class PRFulfillmentPlan(models.Model):
         self.ensure_one()
         product = self.pr_line_id.product_id
         required_qty = self.remaining_qty
-        warehouse = self.pr_line_id.request_id.company_id.warehouse_id or self.env['stock.warehouse'].search([], limit=1)
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', self.pr_line_id.request_id.company_id.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % self.pr_line_id.request_id.company_id.display_name)
         dest_location = warehouse.lot_stock_id
         # Find a source location with enough stock
         all_locations = self.env['stock.location'].search([('usage', '=', 'internal')])
@@ -126,6 +142,8 @@ class PRFulfillmentPlan(models.Model):
                 'product_uom_qty': required_qty,
                 'product_uom': product.uom_id.id,
                 'name': product.display_name,
+                'location_id': source_location.id,
+                'location_dest_id': dest_location.id,
             })],
             'origin': _('PR Fulfillment Plan %s') % self.id,
         })
@@ -138,4 +156,10 @@ class PRFulfillmentPlan(models.Model):
             'res_model': 'stock.picking',
             'res_id': picking.id,
             'view_mode': 'form',
-        } 
+        }
+
+    @api.model
+    def create(self, vals):
+        if vals.get('code', '/') == '/':
+            vals['code'] = self.env['ir.sequence'].next_by_code('scm.pr.fulfillment.plan') or '/'
+        return super().create(vals) 

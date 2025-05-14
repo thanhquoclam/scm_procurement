@@ -27,6 +27,7 @@
     'data': [
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
+        'data/fulfillment_plan_sequence.xml',
         'views/scm_consolidation_views.xml',
         'views/scm_consolidated_line_views.xml',
         'views/scm_change_log_views.xml',
