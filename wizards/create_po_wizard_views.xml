@@ -10,8 +10,8 @@
                     <button name="action_create_pos" type="object" string="Create Purchase Orders" class="btn-primary"/>
                 </header>
                 <sheet>
-                    <group>
-                        <field name="consolidation_id" readonly="1"/>
+                        <group>
+                            <field name="consolidation_id" readonly="1"/>
                         <field name="date_order"/>
                         <field name="currency_id"/>
                         <field name="notes"/>
@@ -43,8 +43,8 @@
                                         <field name="agreement_id"/>
                                         <field name="agreement_line_id"/>
                                     </group>
-                                </form>
-                            </field>
+            </form>
+        </field>
                         </page>
                     </notebook>
                 </sheet>

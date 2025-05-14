@@ -1,11 +1,16 @@
-<odoo>
+    <odoo>
     <record id="view_fulfillment_suggestion_wizard_form" model="ir.ui.view">
         <field name="name">scm.fulfillment.suggestion.wizard.form</field>
         <field name="model">scm.fulfillment.suggestion.wizard</field>
         <field name="arch" type="xml">
             <form string="Fulfillment Suggestion Wizard">
                 <group>
-                    <field name="pr_line_ids" widget="many2many_tags" readonly="1"/>
+                    <field name="consolidation_id" readonly="1"/>
+                    <field name="pr_domain_ids" invisible="1"/>
+                    <field name="pr_id_readonly" invisible="1"/>
+                    <field name="pr_id" 
+                           domain="[('id', 'in', pr_domain_ids.ids)]"
+                           readonly="pr_id_readonly"/>
                 </group>
                 <group>
                     <field name="line_ids">

@@ -101,12 +101,6 @@
                             class="oe_highlight"
                             invisible="state != 'inventory_validation'"/>
                     
-                    <button name="action_reject_consolidation"
-                            string="Reject"
-                            type="object"
-                            class="btn-danger"
-                            invisible="state not in ['draft']"/>
-                    
                     <button name="action_create_po" string="Create POs" type="object" invisible="state not in ['approved']"/>
                     
                     <button name="action_open_po_creation_wizard"
@@ -114,6 +108,12 @@
                             type="object"
                             class="oe_highlight"
                             invisible="state != 'po_creation'"/>
+                    
+                    <button name="%(action_fulfillment_suggestion_wizard)d"
+                            string="Suggest Fulfillment"
+                            type="action"
+                            class="oe_highlight"
+                            invisible="1"/>
                     
                     <button name="action_mark_done"
                             string="Mark as Done"
@@ -135,12 +135,6 @@
                             type="action"
                             class="oe_highlight"
                             invisible="state != 'selecting_lines'"/>
-                    
-                    <button name="%(action_fulfillment_suggestion_wizard)d"
-                            string="Suggest Fulfillment"
-                            type="action"
-                            class="oe_highlight"
-                            invisible="state not in ['draft', 'selecting_lines', 'in_progress', 'validated', 'inventory_validation']"/>
                     
                     <field name="state" widget="statusbar" 
                            statusbar_visible="draft,selecting_lines,in_progress,validated,inventory_validation,inventory_validated,approved,po_created,done"/>
@@ -225,12 +219,10 @@
                                 </tree>
                             </field>
                         </page>
-                        <page string="Notes" name="notes">
-                            <field name="notes"/>
-                        </page>
                         <page string="Fulfillment Plans" name="fulfillment_plans">
                             <field name="fulfillment_plan_ids" readonly="1">
                                 <tree>
+                                    <field name="pr_id"/>
                                     <field name="pr_line_id"/>
                                     <field name="source_type"/>
                                     <field name="planned_qty"/>
@@ -239,6 +231,9 @@
                                     <field name="status"/>
                                 </tree>
                             </field>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="notes"/>
                         </page>
                     </notebook>
                 </sheet>

@@ -82,7 +82,7 @@ class CreateConsolidationWizard(models.TransientModel):
             # Add department filter if specified
             if wizard.department_ids:
                 domain.append(('department_id', 'in', wizard.department_ids.ids))
-                
+            
             # Add category filter if specified
             if wizard.category_ids:
                 domain.append(('product_id.categ_id', 'in', wizard.category_ids.ids))

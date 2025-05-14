@@ -159,7 +159,6 @@ class CreatePOWizard(models.TransientModel):
                 'consolidation_id': self.consolidation_id.id,  # Link to consolidation
                 'order_line': [],
             }
-            
             for line in lines:
                 po_line_vals = {
                     'product_id': line.product_id.id,
@@ -169,7 +168,6 @@ class CreatePOWizard(models.TransientModel):
                     'price_unit': line.price_unit,
                     'date_planned': self.date_order,
                 }
-                
                 if line.agreement_id:
                     po_vals['requisition_id'] = line.agreement_id.id
                     agreement_line = line.agreement_id.line_ids.filtered(
@@ -177,12 +175,9 @@ class CreatePOWizard(models.TransientModel):
                     )
                     if agreement_line:
                         po_line_vals['price_unit'] = agreement_line[0].price_unit
-                
                 po_vals['order_line'].append((0, 0, po_line_vals))
-            
             po = self.env['purchase.order'].create(po_vals)
             created_pos |= po
-            
             # Update consolidation lines with the created PO
             for line in lines:
                 po_line = po.order_line.filtered(

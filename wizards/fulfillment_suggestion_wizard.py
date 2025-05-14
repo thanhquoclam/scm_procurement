@@ -5,9 +5,23 @@ class FulfillmentSuggestionWizard(models.TransientModel):
     _name = 'scm.fulfillment.suggestion.wizard'
     _description = 'Fulfillment Suggestion Wizard'
 
-    pr_line_ids = fields.Many2many(
-        'purchase.request.line',
-        string='PR Lines to Fulfill',
+    consolidation_id = fields.Many2one(
+        'scm.pr.consolidation.session',
+        string='PR Consolidation Session',
+        required=True,
+        readonly=True
+    )
+    pr_id_readonly = fields.Boolean(compute='_compute_pr_id_readonly')
+    pr_id = fields.Many2one(
+        'purchase.request',
+        string='Purchase Request',
+        required=True
+    )
+    pr_domain_ids = fields.Many2many(
+        'purchase.request',
+        compute='_compute_pr_domain_ids',
+        string='PR Domain',
+        store=False
     )
     line_ids = fields.One2many(
         'scm.fulfillment.suggestion.wizard.line',
@@ -15,23 +29,54 @@ class FulfillmentSuggestionWizard(models.TransientModel):
         string='Fulfillment Suggestions',
     )
 
+    @api.onchange('pr_id')
+    def _onchange_pr_id(self):
+        if self.pr_id:
+            commands = [(5, 0, 0)]  # Clear existing lines
+            for pr_line in self.pr_id.line_ids:
+                suggestion = self._suggest_fulfillment(pr_line)
+                commands.append((0, 0, suggestion))
+            self.line_ids = commands
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
-        active_ids = self.env.context.get('active_ids')
-        if active_ids:
-            pr_lines = self.env['purchase.request.line'].browse(active_ids)
-            res['pr_line_ids'] = [(6, 0, pr_lines.ids)]
-            suggestion_lines = []
-            for pr_line in pr_lines:
-                suggestion = self._suggest_fulfillment(pr_line)
-                suggestion_lines.append((0, 0, suggestion))
-            res['line_ids'] = suggestion_lines
+        ctx = self.env.context
+        if ctx.get('active_model') == 'scm.pr.consolidation.session' and ctx.get('active_id'):
+            consolidation = self.env['scm.pr.consolidation.session'].browse(ctx['active_id'])
+            res['consolidation_id'] = consolidation.id
+            if consolidation.purchase_request_ids:
+                res['pr_id'] = consolidation.purchase_request_ids[0].id
+        elif ctx.get('active_model') == 'purchase.request' and ctx.get('active_id'):
+            res['pr_id'] = ctx['active_id']
+            # Try to find consolidation from context or PR line
+            consolidation_id = ctx.get('default_consolidation_id') or ctx.get('consolidation_id')
+            if not consolidation_id:
+                pr = self.env['purchase.request'].browse(ctx['active_id'])
+                if pr.line_ids and pr.line_ids[0].consolidated_line_ids:
+                    consolidation_id = pr.line_ids[0].consolidated_line_ids[0].consolidation_id.id
+            res['consolidation_id'] = consolidation_id
         return res
+
+    @api.depends('pr_id')
+    def _compute_pr_id_readonly(self):
+        for wizard in self:
+            ctx = self.env.context
+            wizard.pr_id_readonly = ctx.get('active_model') == 'purchase.request'
+
+    @api.depends('consolidation_id')
+    def _compute_pr_domain_ids(self):
+        for wizard in self:
+            if wizard.consolidation_id and wizard.consolidation_id.purchase_request_ids:
+                wizard.pr_domain_ids = wizard.consolidation_id.purchase_request_ids
+            else:
+                # Return an empty recordset to ensure domain is always valid
+                wizard.pr_domain_ids = self.env['purchase.request']
 
     def _suggest_fulfillment(self, pr_line):
         """Suggest fulfillment based on product availability and rules"""
         suggestion = {
+            'pr_line_id': pr_line.id,
             'source_type': 'purchase',
             'source_location_id': False,
             'destination_location_id': False,
@@ -62,39 +107,52 @@ class FulfillmentSuggestionWizard(models.TransientModel):
                     'timeline': 'immediate',
                     'note': 'Product available in stock'
                 })
-                return suggestion
+        return suggestion
+
+    def _suggest_fulfillment_consolidated(self, consolidated_line):
+        # Suggest fulfillment for a consolidated line (product)
+        suggestion = {
+            'pr_line_id': consolidated_line.purchase_request_line_ids and consolidated_line.purchase_request_line_ids[0].id or False,
+            'source_type': 'po',
+            'source_location_id': False,
+            'destination_location_id': False,
+            'planned_qty': consolidated_line.total_quantity,
+            'planned_start_date': fields.Date.today(),
+            'planned_end_date': fields.Date.today(),
+            'timeline': 'immediate',
+            'note': False
+        }
+        # You can enhance this to use product, warehouse, etc. from consolidated_line
         return suggestion
 
     def action_confirm(self):
-        # Create fulfillment plans and actions based on user input
-        for line in self.line_ids:
-            pr_line = line.pr_line_id
+        if not self.pr_id or not self.consolidation_id:
+            raise UserError(_("Both Purchase Request and Consolidation must be selected."))
+        for pr_line in self.pr_id.line_ids:
             plan_vals = {
                 'pr_line_id': pr_line.id,
-                'planned_qty': line.planned_qty,
-                'source_type': line.source_type,
-                'source_location_id': line.source_location_id.id,
-                'destination_location_id': line.destination_location_id.id,
-                'planned_start_date': line.planned_start_date,
-                'planned_end_date': line.planned_end_date,
-                'timeline': line.timeline,
-                'note': line.note,
+                'pr_id': self.pr_id.id,
+                'consolidation_id': self.consolidation_id.id,
+                'planned_qty': pr_line.product_qty,
+                'source_type': 'po',  # or your suggestion logic
+                'source_location_id': False,
+                'destination_location_id': False,
+                'planned_start_date': fields.Date.today(),
+                'planned_end_date': fields.Date.today(),
+                'timeline': 'immediate',
+                'note': False,
             }
-            plan = self.env['scm.pr.fulfillment.plan'].create(plan_vals)
-            
-            # Create fulfillment actions based on source type
-            if line.source_type == 'stock':
-                self._create_stock_move(plan, pr_line, line.planned_qty)
-            elif line.source_type == 'transfer':
-                self._create_internal_transfer(plan, pr_line, line.planned_qty)
-            elif line.source_type == 'purchase':
-                self._create_purchase_order(plan, pr_line, line.planned_qty)
+            self.env['scm.pr.fulfillment.plan'].create(plan_vals)
         return {'type': 'ir.actions.act_window_close'}
 
     def _create_stock_move(self, plan, pr_line, qty):
         # Create a stock move for on-hand fulfillment
         product = pr_line.product_id
-        dest_location = pr_line.request_id.company_id.warehouse_id.lot_stock_id
+        company = pr_line.request_id.company_id
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', company.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % company.display_name)
+        dest_location = warehouse.lot_stock_id
         move = self.env['stock.move'].create({
             'product_id': product.id,
             'product_uom_qty': qty,
@@ -236,15 +294,25 @@ class FulfillmentSuggestionWizardLine(models.TransientModel):
                     'timeline': 'immediate',
                     'note': 'Product available in stock'
                 })
-                return suggestion
         return suggestion
 
     def action_confirm(self):
         # Create fulfillment plans and actions based on user input
         for line in self.line_ids:
             pr_line = line.pr_line_id
+            consolidation_id = (
+                self.env.context.get('active_id') if self.env.context.get('active_model') == 'scm.pr.consolidation.session'
+                else self.env.context.get('default_consolidation_id')
+                or self.env.context.get('consolidation_id')
+                or (pr_line.consolidated_line_ids and pr_line.consolidated_line_ids[0].consolidation_id.id)
+                or False
+            )
+            if not consolidation_id:
+                raise UserError(_("Cannot create a fulfillment plan: No consolidation session found for PR line '%s'. Please ensure the PR line is part of a consolidation.") % pr_line.display_name)
             plan_vals = {
                 'pr_line_id': pr_line.id,
+                'pr_id': pr_line.request_id.id,
+                'consolidation_id': consolidation_id,
                 'planned_qty': line.planned_qty,
                 'source_type': line.source_type,
                 'source_location_id': line.source_location_id.id,
@@ -261,14 +329,18 @@ class FulfillmentSuggestionWizardLine(models.TransientModel):
                 self._create_stock_move(plan, pr_line, line.planned_qty)
             elif line.source_type == 'transfer':
                 self._create_internal_transfer(plan, pr_line, line.planned_qty)
-            elif line.source_type == 'purchase':
+            elif line.source_type == 'po':
                 self._create_purchase_order(plan, pr_line, line.planned_qty)
         return {'type': 'ir.actions.act_window_close'}
 
     def _create_stock_move(self, plan, pr_line, qty):
         # Create a stock move for on-hand fulfillment
         product = pr_line.product_id
-        dest_location = pr_line.request_id.company_id.warehouse_id.lot_stock_id
+        company = pr_line.request_id.company_id
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', company.id)], limit=1)
+        if not warehouse:
+            raise UserError(_("No warehouse found for company %s") % company.display_name)
+        dest_location = warehouse.lot_stock_id
         move = self.env['stock.move'].create({
             'product_id': product.id,
             'product_uom_qty': qty,
